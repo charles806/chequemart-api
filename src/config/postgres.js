@@ -5,7 +5,7 @@ import "dotenv/config";
 // Setup Sequelize instance
 export const sequelize = new Sequelize(process.env.POSTGRES_URI, {
   dialect: "postgres",
-  logging: console.log,
+  // logging: console.log,
   dialectOptions: {
     ssl: {
       require: true,

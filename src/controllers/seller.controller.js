@@ -74,6 +74,14 @@ export const getDashboardSummary = async (req, res, next) => {
 export const getRevenueAnalytics = async (req, res, next) => {
   try {
     const sellerId = req.user._id;
+    
+    if (!sellerId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required"
+      });
+    }
+    
     const { period = 'weekly' } = req.query;
 
     // Last 7 days for weekly chart

@@ -10,13 +10,19 @@ import "./src/models/Withdrawal.model.js";
 const PORT = process.env.PORT;
 
 const startServer = async () => {
-  await connectDB();
-  await connectPostgres();
+  try {
+    await connectDB();
+    await connectPostgres();
 
-  const server = app.listen(PORT, () => {
-    console.log(`🚀 Chequemart API running on port ${PORT}`);;
-    console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  });
+    if (process.env.VERCEL) {
+      console.log("🚀 Running in Vercel environment");
+      return;
+    }
+
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 Chequemart API running on port ${PORT}`);
+      console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+    });
 
   //  Graceful Shutdown 
   const shutdown = (signal) => {
@@ -30,10 +36,16 @@ const startServer = async () => {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
 
-  process.on("unhandledRejection", (err) => {
-    console.error("❌ Unhandled Promise Rejection:", err.message);
-    server.close(() => process.exit(1));
-  });
+    process.on("unhandledRejection", (err) => {
+      console.error("❌ Unhandled Promise Rejection:", err.message);
+      if (typeof server !== 'undefined') server.close(() => process.exit(1));
+      else process.exit(1);
+    });
+  } catch (error) {
+    console.error("❌ Startup Error:", error.message);
+  }
 };
 
 startServer();
+
+export default app;
