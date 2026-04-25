@@ -26,8 +26,8 @@ app.use(helmet());
 // ─────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL,
+  "https://www.chequemart.com",
   "https://chequemart.com",
-  "https://chequemart.vercel.app"
 ].filter(Boolean);
 
 app.use(
@@ -56,6 +56,26 @@ app.use(
 
 // ✅ IMPORTANT: Handle preflight requests
 app.options("*", cors());
+
+// Handle all preflight OPTIONS requests explicitly
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    const origin = req.headers.origin;
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      (origin && (origin.endsWith(".vercel.app") || origin.endsWith(".chequemart.com")));
+    
+    if (isAllowed || !origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin || "*");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+      return res.status(204).end();
+    }
+    return res.status(403).json({ success: false, message: "CORS not allowed" });
+  }
+  next();
+});
 
 // ─────────────────────────────────────────
 // 🧱 Core Middleware
