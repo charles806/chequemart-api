@@ -26,6 +26,8 @@ app.use(helmet());
 // ─────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL,
+  "https://chequemart.com",
+  "https://chequemart.vercel.app"
 ].filter(Boolean);
 
 app.use(
@@ -36,7 +38,8 @@ app.use(
 
       const isAllowed =
         allowedOrigins.includes(origin) ||
-        origin.endsWith(".vercel.app");
+        origin.endsWith(".vercel.app") ||
+        origin.endsWith(".chequemart.com");
 
       if (isAllowed) {
         return callback(null, true);
