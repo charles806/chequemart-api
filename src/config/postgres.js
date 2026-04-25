@@ -1,4 +1,5 @@
-import { Sequelize } from "sequelize";
+import pkg from "sequelize";
+const { Sequelize } = pkg;
 import "dotenv/config";
 
 // Setup Sequelize instance

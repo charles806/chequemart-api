@@ -1,5 +1,7 @@
 import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
+// @ts-ignore
+import pkg from 'multer-storage-cloudinary';
+const CloudinaryStorage = pkg.CloudinaryStorage || pkg.default || pkg;
 import multer from 'multer';
 import crypto from 'crypto';
 
@@ -8,12 +10,12 @@ const isCloudinaryConfigured = () => {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
-  
+
   console.log("Cloudinary config check:");
   console.log("  CLOUDINARY_CLOUD_NAME:", cloudName ? "present" : "missing");
   console.log("  CLOUDINARY_API_KEY:", apiKey ? "present" : "missing");
   console.log("  CLOUDINARY_API_SECRET:", apiSecret ? "present" : "missing");
-  
+
   return cloudName && apiKey && apiSecret;
 };
 
@@ -74,7 +76,7 @@ export const uploadBufferToCloudinary = async (buffer, options = {}) => {
         else resolve(result);
       }
     );
-    
+
     uploadStream.end(buffer);
   });
 };
