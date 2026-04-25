@@ -20,13 +20,33 @@ const app = express();
 
 app.use(helmet());
 
-// CORS: Only allow requests from the client URL
+// CORS: Support multiple origins for local development and production
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  "https://www.chequemart.com",
+  "https://chequemart.com",
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Check if the origin is in our allowed list or is a Vercel preview URL
+      const isAllowed = allowedOrigins.includes(origin) || origin.endsWith(".vercel.app");
+      
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        console.warn(`CORS blocked for origin: ${origin}`);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    exposedHeaders: ["set-cookie"]
   })
 );
 
