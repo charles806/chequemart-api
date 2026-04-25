@@ -11,6 +11,7 @@ import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
 import productRoutes from "./routes/product.routes.js";
+import sellerRoutes from "./routes/seller.routes.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -107,6 +108,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/seller", sellerRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

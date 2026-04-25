@@ -251,7 +251,7 @@ export const getMyProducts = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "My products retrieved successfully",
-      data: products,
+      products,
       pagination: {
         page: Number(page),
         limit: Number(limit),

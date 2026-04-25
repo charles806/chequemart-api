@@ -111,6 +111,16 @@ const UserSchema = new Schema(
       isApproved: { type: Boolean, default: false },
       onboardingComplete: { type: Boolean, default: false },
       businessEmail: { type: String, default: null },
+      description: { type: String, default: null },
+      location: { type: String, default: null },
+      category: { type: String, default: null },
+      logo: { type: String, default: null },
+      banner: { type: String, default: null },
+      socialLinks: {
+        instagram: { type: String, default: null },
+        twitter: { type: String, default: null },
+        whatsapp: { type: String, default: null },
+      },
 
       paystackSubaccountCode: { type: String, default: null },
       paystackSubaccountId: { type: String, default: null },
@@ -176,6 +186,12 @@ UserSchema.methods.toPublicProfile = function () {
       isApproved: this.sellerInfo.isApproved,
       onboardingComplete: this.sellerInfo.onboardingComplete,
       businessEmail: this.sellerInfo.businessEmail,
+      description: this.sellerInfo.description,
+      location: this.sellerInfo.location,
+      category: this.sellerInfo.category,
+      logo: this.sellerInfo.logo,
+      banner: this.sellerInfo.banner,
+      socialLinks: this.sellerInfo.socialLinks,
       // SECURE: Never expose paystackSubaccountCode, paystackSubaccountId,
       // bankCode, accountNumber, accountName to clients
     };

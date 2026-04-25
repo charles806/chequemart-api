@@ -53,19 +53,16 @@ export async function updateProfile(req, res, next) {
 
     // Update phone if provided
     if (phone) {
-      // Check if phone is already in use by another user
-      const phoneExists = await User.findOne({
-        phone,
-        _id: { $ne: user._id },
-      });
-
+      const phoneExists = await User.findOne({ phone, _id: { $ne: user._id } });
       if (phoneExists) {
-        return res.status(409).json({
-          success: false,
-          message: "This phone number is already in use.",
-        });
+        return res.status(409).json({ success: false, message: "Phone number in use." });
       }
       user.phone = phone;
+    }
+
+    // Update seller info if provided
+    if (req.body.sellerInfo) {
+      user.sellerInfo = { ...user.sellerInfo, ...req.body.sellerInfo };
     }
 
     await user.save();

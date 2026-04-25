@@ -160,8 +160,8 @@ export async function register(req, res, next) {
       if (bankCode && accountNumber) {
         try {
           // Verify bank account with Paystack
-          const resolvedAccount = await resolveAccountNumber(accountNumber, bankCode);
-          const subaccount = await createSubaccount({
+          const resolvedAccount = resolveAccountNumber(accountNumber, bankCode);
+          const subaccount = createSubaccount({
             businessName: storeName,
             bankCode,
             accountNumber,
@@ -413,7 +413,7 @@ export async function resolveAccount(req, res, next) {
       });
     }
 
-    const result = await resolveAccountNumber(accountNumber, bankCode);
+    const result = resolveAccountNumber(accountNumber, bankCode);
 
     res.status(200).json({
       success: true,
@@ -490,7 +490,7 @@ export async function sendPhoneOTP(req, res, next) {
 
     // Generate OTP
     const otp = generateOTP();
-    const hashedOtp = await hashOTP(otp);
+    const hashedOtp = hashOTP(otp);
     const expiresAt = getOTPExpiry();
 
     // Upsert user: create if not exists, update OTP if exists
@@ -505,7 +505,7 @@ export async function sendPhoneOTP(req, res, next) {
     );
 
     // Send OTP via SMS
-    await sendOTPviaSMS(phone, otp);
+    sendOTPviaSMS(phone, otp);
 
     res.status(200).json({
       success: true,
@@ -557,7 +557,7 @@ export async function verifyPhoneOTP(req, res, next) {
     }
 
     // Verify OTP
-    const isValid = await verifyOTP(otp, user.otp.code);
+    const isValid = verifyOTP(otp, user.otp.code);
     if (!isValid) {
       return res.status(400).json({
         success: false,
@@ -806,8 +806,8 @@ export async function becomeSeller(req, res, next) {
     // If bank details provided, attempt to create Paystack subaccount
     if (bankCode && accountNumber) {
       try {
-        const resolvedAccount = await resolveAccountNumber(accountNumber, bankCode);
-        const subaccount = await createSubaccount({
+        const resolvedAccount = resolveAccountNumber(accountNumber, bankCode);
+        const subaccount = createSubaccount({
           businessName: storeName,
           bankCode,
           accountNumber,

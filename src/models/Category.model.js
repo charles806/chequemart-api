@@ -40,7 +40,6 @@ const CategorySchema = new Schema(
   }
 );
 
-CategorySchema.index({ name: 1 });
 CategorySchema.index({ parentCategory: 1 });
 CategorySchema.index({ isActive: 1 });
 

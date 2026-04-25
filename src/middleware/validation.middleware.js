@@ -48,7 +48,7 @@ export const registerValidation = [
     .normalizeEmail(), // SECURITY: normalize email to prevent duplicate accounts
   body("phone")
     .optional()
-    .matches(/^\+?[1-9]\d{6,14}$/)
+    .matches(/^\+?[0-9]\d{6,14}$/)
     .withMessage("Invalid phone number format"),
   body("role")
     .optional()
@@ -107,7 +107,7 @@ export const vendorRegisterValidation = [
     .normalizeEmail(),
   body("phone")
     .optional()
-    .matches(/^\+?[1-9]\d{6,14}$/),
+    .matches(/^\+?[0-9]\d{6,14}$/),
   body("storeName")
     .trim()
     .notEmpty()
