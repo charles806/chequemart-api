@@ -67,11 +67,12 @@ const verifyRefreshToken = (token) => {
 const setTokenCookies = (res, accessToken, refreshToken) => {
   const isProduction = process.env.NODE_ENV === "production";
 
-  // Access token cookie — expires in 15 minutes
+  // Access token cookie — match JWT_ACCESS_EXPIRES (15 minutes)
+  // httpOnly: false so the frontend can read it for authorization
   res.cookie("accessToken", accessToken, {
-    httpOnly: true,
+    httpOnly: false,
     secure: isProduction,
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
     maxAge: 15 * 60 * 1000, // 15 minutes in ms
   });
@@ -80,9 +81,8 @@ const setTokenCookies = (res, accessToken, refreshToken) => {
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
     secure: isProduction,
-    sameSite: "strict",
+    sameSite: "lax",
     path: "/",
-    httpOnly: true,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
   });
 };

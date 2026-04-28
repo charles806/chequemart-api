@@ -5,11 +5,11 @@ import "dotenv/config";
 // Setup Sequelize instance
 export const sequelize = new Sequelize(process.env.POSTGRES_URI, {
   dialect: "postgres",
-  // logging: console.log,
+  logging: false,
   dialectOptions: {
     ssl: {
       require: true,
-      rejectUnauthorized: false // Neon DB requires this
+      rejectUnauthorized: false
     }
   },
   pool: {
@@ -29,7 +29,7 @@ export const connectPostgres = async () => {
     await sequelize.sync({ alter: true });
     console.log("✅ PostgreSQL schema synced");
   } catch (error) {
-    console.error(`❌ PostgreSQL Connection Error: ${error.message}`);
-    // Non-fatal error during dev, or you can choose to process.exit(1)
+    console.warn(`⚠️ PostgreSQL Connection Warning: ${error.message}`);
+    // Non-fatal error - continue without PostgreSQL
   }
 };

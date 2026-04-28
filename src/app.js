@@ -12,6 +12,10 @@ import userRoutes from "./routes/user.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
 import productRoutes from "./routes/product.routes.js";
 import sellerRoutes from "./routes/seller.routes.js";
+import orderRoutes from "./routes/order.routes.js";
+import cartRoutes from "./routes/cart.routes.js";
+import uploadRoutes from "./routes/upload.routes.js";
+import webhookRoutes from "./routes/webhook.routes.js";
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -37,7 +41,8 @@ app.use(
       const isAllowed =
         allowedOrigins.includes(origin) ||
         origin.endsWith(".vercel.app") ||
-        origin.endsWith(".chequemart.com");
+        origin.endsWith(".chequemart.com") ||
+        origin.endsWith("chequemart.com");
 
       if (isAllowed) {
         return callback(null, true);
@@ -139,6 +144,10 @@ app.use("/api/users", userRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/seller", sellerRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/cart", cartRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/webhooks", webhookRoutes);
 
 // ─────────────────────────────────────────
 // ❌ Error Handling

@@ -33,22 +33,49 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
-    default: 'pending',
+    enum: ['Pending', 'processing', 'confirmed', 'shipped', 'delivered', 'collected', 'cancelled'],
+    default: 'Pending',
   },
+  trackingNumber: {
+    type: String,
+    default: null,
+  },
+  carrier: {
+    type: String,
+    default: null,
+  },
+  trackingHistory: [
+    {
+      status: String,
+      description: String,
+      timestamp: { type: Date, default: Date.now },
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    }
+  ],
   paymentStatus: {
     type: String,
-    enum: ['unpaid', 'paid', 'refunded'],
-    default: 'unpaid',
+    enum: ['Pending', 'Paid', 'Unpaid', 'Refunded'],
+    default: 'Pending',
   },
   shippingAddress: {
     fullName: String,
     address: String,
     city: String,
+    state: String,
     phone: String,
   },
   escrowId: {
-    type: String, // ID of the escrow record in PostgreSQL
+    type: String,
+  },
+  paymentReference: {
+    type: String,
+  },
+  isPaid: {
+    type: Boolean,
+    default: false,
+  },
+  paidAt: {
+    type: Date,
   }
 }, { timestamps: true });
 

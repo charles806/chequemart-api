@@ -3,7 +3,8 @@ import Wallet from '../models/Wallet.model.js';
 import Transaction from '../models/Transaction.model.js';
 import BankDetail from '../models/BankDetail.model.js';
 import Escrow from '../models/Escrow.model.js';
-import mongoose from 'mongoose';
+import { validateTransition } from '../utils/statusTransitions.js';
+import { sendStatusNotification } from '../utils/notifications.js';
 
 /**
  * GET /api/seller/wallet
@@ -12,6 +13,7 @@ import mongoose from 'mongoose';
 export const getWallet = async (req, res, next) => {
   try {
     const sellerId = req.user._id.toString();
+    console.log("💰 getWallet called, sellerId:", sellerId);
 
     let wallet = await Wallet.findOne({ where: { seller_id: sellerId } });
 
@@ -25,6 +27,7 @@ export const getWallet = async (req, res, next) => {
       wallet
     });
   } catch (error) {
+    console.error("💰 wallet error:", error.message);
     next(error);
   }
 };
@@ -74,6 +77,7 @@ export const getDashboardSummary = async (req, res, next) => {
 export const getRevenueAnalytics = async (req, res, next) => {
   try {
     const sellerId = req.user._id;
+    console.log("📊 getRevenueAnalytics called, sellerId:", sellerId);
     
     if (!sellerId) {
       return res.status(401).json({
@@ -87,6 +91,7 @@ export const getRevenueAnalytics = async (req, res, next) => {
     // Last 7 days for weekly chart
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
+    console.log("📊 startDate:", startDate);
 
     const revenueData = await Order.aggregate([
       { 
@@ -98,17 +103,17 @@ export const getRevenueAnalytics = async (req, res, next) => {
       },
       {
         $group: {
-          _id: { $dateToString: { format: "%a", date: "$createdAt" } }, // Mon, Tue, etc.
+          _id: { $dateToString: { format: "%w", date: "$createdAt" } },
           revenue: { $sum: '$totalAmount' },
           orders: { $count: {} }
         }
       }
     ]);
+    console.log("📊 revenueData:", revenueData);
 
-    // Ensure all 7 days are present with 0 if no data
     const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const formattedData = days.map(day => {
-      const match = revenueData.find(d => d._id === day);
+    const formattedData = days.map((day, index) => {
+      const match = revenueData.find(d => parseInt(d._id) === index);
       return {
         label: day,
         revenue: match ? match.revenue : 0,
@@ -144,9 +149,15 @@ export const getSellerOrders = async (req, res, next) => {
       .limit(parseInt(limit))
       .populate('buyer', 'name email');
 
+    // Add computed payment status to each order
+    const ordersWithPayment = orders.map(order => ({
+      ...order.toObject(),
+      paymentStatus: order.paymentStatus || (order.isPaid ? 'Paid' : 'UnPaid')
+    }));
+
     res.status(200).json({
       success: true,
-      orders
+      orders: ordersWithPayment
     });
   } catch (error) {
     next(error);
@@ -156,11 +167,12 @@ export const getSellerOrders = async (req, res, next) => {
 /**
  * PUT /api/seller/orders/:id/status
  * Updates the status of an order (e.g. Pending -> Shipped).
+ * Enforces proper status transitions and validates payment requirements.
  */
 export const updateOrderStatus = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, trackingNumber, carrier, description } = req.body;
     const sellerId = req.user._id;
 
     const order = await Order.findOne({ _id: id, seller: sellerId });
@@ -169,9 +181,36 @@ export const updateOrderStatus = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    // Basic transition validation could be added here
-    order.status = status;
+    // Enforce proper status transitions
+    const { valid, message } = validateTransition(order.status, status, 'seller');
+    if (!valid) {
+      return res.status(400).json({ success: false, message });
+    }
+
+    // Check payment requirement for shipping
+    const isPaid = order.paymentStatus === "Paid" || order.isPaid === true;
+    if (!isPaid && ["shipped", "delivered", "collected"].includes(status.toLowerCase())) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Cannot progress order - payment not yet confirmed. Wait for buyer to complete payment." 
+      });
+    }
+
+    const previousStatus = order.status;
+    order.status = status.toLowerCase();
+    
+    if (trackingNumber) order.trackingNumber = trackingNumber;
+    if (carrier) order.carrier = carrier;
+    
+    order.trackingHistory.push({
+      status: status.toLowerCase(),
+      description: description || `Order status updated to ${status} by seller`,
+      updatedBy: sellerId
+    });
+
     await order.save();
+
+    await sendStatusNotification(order, previousStatus);
 
     res.status(200).json({
       success: true,

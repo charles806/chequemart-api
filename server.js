@@ -11,8 +11,9 @@ const PORT = process.env.PORT;
 
 const startServer = async () => {
   try {
-    await connectDB();
-    await connectPostgres();
+    // Connect to DBs without blocking startup
+    connectDB().catch(err => console.warn("⚠️ MongoDB:", err.message));
+    connectPostgres().catch(err => console.warn("⚠️ PostgreSQL:", err.message));
 
     if (process.env.VERCEL) {
       console.log("🚀 Running in Vercel environment");

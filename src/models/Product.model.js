@@ -32,13 +32,17 @@ const ProductSchema = new Schema(
       },
     },
     category: {
-      type: Schema.Types.ObjectId,
-      ref: "Category",
+      type: String,
       required: [true, "Product category is required"],
     },
     images: {
       type: [String],
       default: [],
+    },
+    condition: {
+      type: String,
+      enum: ["Brand New", "Like New", "Fairly Used", "Refurbished"],
+      default: "Brand New",
     },
     stock: {
       type: Number,

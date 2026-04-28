@@ -87,3 +87,32 @@ export const resolveAccountNumber = async (accountNumber, bankCode) => {
   );
   return response.data;
 };
+
+/**
+ * initializeTransaction
+ * Starts a new payment session.
+ * 
+ * @param {object} params - { email, amount (in kobo), metadata, subaccount, transaction_charge, callback_url }
+ */
+export const initializeTransaction = async ({ email, amount, metadata, subaccount, transaction_charge, callback_url, return_url }) => {
+  const body = {
+    email,
+    amount,
+    metadata,
+    ...(callback_url && { callback_url }),
+    ...(return_url && { return_url }),
+    ...(subaccount && { subaccount, transaction_charge }),
+  };
+
+  const response = await paystackRequest("POST", "/transaction/initialize", body);
+  return response.data;
+};
+
+/**
+ * verifyTransaction
+ * Checks the status of a transaction using its reference.
+ */
+export const verifyTransaction = async (reference) => {
+  const response = await paystackRequest("GET", `/transaction/verify/${reference}`);
+  return response.data;
+};

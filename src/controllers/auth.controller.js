@@ -160,8 +160,8 @@ export async function register(req, res, next) {
       if (bankCode && accountNumber) {
         try {
           // Verify bank account with Paystack
-          const resolvedAccount = resolveAccountNumber(accountNumber, bankCode);
-          const subaccount = createSubaccount({
+          const resolvedAccount = await resolveAccountNumber(accountNumber, bankCode);
+          const subaccount = await createSubaccount({
             businessName: storeName,
             bankCode,
             accountNumber,
@@ -413,7 +413,7 @@ export async function resolveAccount(req, res, next) {
       });
     }
 
-    const result = resolveAccountNumber(accountNumber, bankCode);
+    const result = await resolveAccountNumber(accountNumber, bankCode);
 
     res.status(200).json({
       success: true,
@@ -421,10 +421,10 @@ export async function resolveAccount(req, res, next) {
       accountNumber: result.account_number,
     });
   } catch (error) {
-    // Return a user-friendly message if Paystack can't find the account
+    // Return the actual error message from Paystack (e.g. "Account number is invalid")
     return res.status(400).json({
       success: false,
-      message: "Could not resolve account. Please check your details.",
+      message: error.message || "Could not resolve account. Please check your details.",
     });
   }
 }
@@ -670,11 +670,11 @@ export async function forgotPassword(req, res, next) {
       const emailResult = await sendPasswordResetEmail(user.email, user.name, resetToken);
       if (!emailResult) {
         // Email failed to send but don't reveal this to user
-        console.error("❌ Email sending returned null");
+        console.error(" Email sending returned null");
       }
     } catch (emailError) {
       // Clean up token if email fails
-      console.error("❌ Failed to send password reset email:", emailError.message);
+      console.error("Failed to send password reset email:", emailError.message);
       user.passwordResetToken = undefined;
       user.passwordResetExpiresAt = undefined;
       await user.save({ validateBeforeSave: false });
@@ -806,8 +806,8 @@ export async function becomeSeller(req, res, next) {
     // If bank details provided, attempt to create Paystack subaccount
     if (bankCode && accountNumber) {
       try {
-        const resolvedAccount = resolveAccountNumber(accountNumber, bankCode);
-        const subaccount = createSubaccount({
+        const resolvedAccount = await resolveAccountNumber(accountNumber, bankCode);
+        const subaccount = await createSubaccount({
           businessName: storeName,
           bankCode,
           accountNumber,

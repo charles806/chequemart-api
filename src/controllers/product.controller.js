@@ -16,11 +16,14 @@ export const getAllProducts = async (req, res) => {
     }
 
     if (search) {
-      filter.$text = { $search: search };
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { category: { $regex: search, $options: "i" } }
+      ];
     }
 
     const products = await Product.find(filter)
-      .populate("category", "name")
       .populate("seller", "name email")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
@@ -51,7 +54,6 @@ export const getAllProducts = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
-      .populate("category", "name")
       .populate("seller", "name email avatar");
 
     if (!product) {
@@ -78,7 +80,6 @@ export const getProductById = async (req, res) => {
 export const getFeaturedProducts = async (req, res) => {
   try {
     const products = await Product.find({ isActive: true, isFeatured: true })
-      .populate("category", "name")
       .populate("seller", "name email")
       .limit(10);
 
@@ -100,13 +101,6 @@ export const createProduct = async (req, res) => {
   try {
     const { name, description, price, discountPrice, category, images, stock, sku, specifications, isFeatured } = req.body;
 
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category",
-      });
-    }
 
     const product = await Product.create({
       name,
@@ -115,6 +109,7 @@ export const createProduct = async (req, res) => {
       discountPrice,
       category,
       images: images || [],
+      condition: req.body.condition || "Brand New",
       stock: stock || 0,
       sku,
       seller: req.user._id,
@@ -122,7 +117,6 @@ export const createProduct = async (req, res) => {
       isFeatured: isFeatured || false,
     });
 
-    await product.populate("category", "name");
     await product.populate("seller", "name email");
 
     res.status(201).json({
@@ -159,15 +153,7 @@ export const updateProduct = async (req, res) => {
 
     const { name, description, price, discountPrice, category, images, stock, sku, specifications, isFeatured, isActive } = req.body;
 
-    if (category) {
-      const categoryExists = await Category.findById(category);
-      if (!categoryExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid category",
-        });
-      }
-    }
+
 
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
@@ -178,6 +164,7 @@ export const updateProduct = async (req, res) => {
         discountPrice,
         category,
         images,
+        condition: req.body.condition,
         stock,
         sku,
         specifications,
@@ -186,7 +173,6 @@ export const updateProduct = async (req, res) => {
       },
       { new: true, runValidators: true }
     )
-      .populate("category", "name")
       .populate("seller", "name email");
 
     res.status(200).json({
@@ -241,7 +227,6 @@ export const getMyProducts = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
 
     const products = await Product.find({ seller: req.user._id })
-      .populate("category", "name")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
