@@ -18,10 +18,9 @@ import orderRoutes from "./routes/order.routes.js";
 import cartRoutes from "./routes/cart.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
-<<<<<<< HEAD
-=======
+
 import disputeRoutes from "./routes/dispute.routes.js";
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
+
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
@@ -161,15 +160,13 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/webhooks", webhookRoutes);
-<<<<<<< HEAD
-=======
+
 app.use("/api/webhook", webhookRoutes); // Alias for Paystack singular callback
 app.use("/api/disputes", disputeRoutes);
 
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("My first Sentry error!");
 });
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
 // ─────────────────────────────────────────
 // ❌ Error Handling
