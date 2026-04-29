@@ -164,6 +164,14 @@ app.use("/api/webhooks", webhookRoutes);
 app.use("/api/webhook", webhookRoutes); // Alias for Paystack singular callback
 app.use("/api/disputes", disputeRoutes);
 
+// Health check and root
+app.get("/", (req, res) => {
+  res.json({ status: "ok", message: "Chequemart API is running" });
+});
+app.get("/health", (req, res) => {
+  res.json({ status: "healthy", timestamp: new Date().toISOString() });
+});
+
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("My first Sentry error!");
 });

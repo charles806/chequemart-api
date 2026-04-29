@@ -35,11 +35,6 @@ const checkEnvVars = () => {
 
 const startServer = async () => {
   try {
-<<<<<<< HEAD
-    // Connect to DBs without blocking startup
-    connectDB().catch(err => console.warn("⚠️ MongoDB:", err.message));
-    connectPostgres().catch(err => console.warn("⚠️ PostgreSQL:", err.message));
-=======
     // Check env vars first
     checkEnvVars();
     
@@ -49,7 +44,6 @@ const startServer = async () => {
 
     // Start cron jobs after DB connection
     startEscrowAutoReleaseJob();
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
     if (process.env.VERCEL) {
       console.log("🚀 Running in Vercel environment");
@@ -61,17 +55,17 @@ const startServer = async () => {
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);
     });
 
-  //  Graceful Shutdown 
-  const shutdown = (signal) => {
-    console.log(`\n⚠️  Received ${signal}. Shutting down gracefully...`);
-    server.close(() => {
-      console.log("✅ HTTP server closed.");
-      process.exit(0);
-    });
-  };
+    //  Graceful Shutdown 
+    const shutdown = (signal) => {
+      console.log(`\n⚠️  Received ${signal}. Shutting down gracefully...`);
+      server.close(() => {
+        console.log("✅ HTTP server closed.");
+        process.exit(0);
+      });
+    };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
 
     process.on("unhandledRejection", (err) => {
       console.error("❌ Unhandled Promise Rejection:", err.message);
