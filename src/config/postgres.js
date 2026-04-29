@@ -1,4 +1,5 @@
 import pkg from "sequelize";
+import pg from "pg";
 const { Sequelize } = pkg;
 import "dotenv/config";
 
