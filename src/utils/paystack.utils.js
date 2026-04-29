@@ -5,6 +5,10 @@ import https from "https";
  * Generic helper for Paystack API calls.
  */
 const paystackRequest = (method, path, body = null) => {
+  if (!process.env.PAYSTACK_SECRET_KEY) {
+    return Promise.reject(new Error("PAYSTACK_SECRET_KEY is not configured"));
+  }
+
   return new Promise((resolve, reject) => {
     const payload = body ? JSON.stringify(body) : null;
 
