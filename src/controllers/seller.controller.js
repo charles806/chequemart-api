@@ -3,16 +3,11 @@ import Wallet from '../models/Wallet.model.js';
 import Transaction from '../models/Transaction.model.js';
 import BankDetail from '../models/BankDetail.model.js';
 import Escrow from '../models/Escrow.model.js';
-<<<<<<< HEAD
-import { validateTransition } from '../utils/statusTransitions.js';
-import { sendStatusNotification } from '../utils/notifications.js';
-=======
 import Withdrawal from '../models/Withdrawal.model.js';
 import { validateTransition } from '../utils/statusTransitions.js';
 import { sendStatusNotification } from '../utils/notifications.js';
 import { createTransfer, createRecipient, resolveAccountNumber } from '../utils/paystack.utils.js';
 import { sequelize } from '../config/postgres.js';
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
 /**
  * GET /api/seller/wallet
@@ -160,11 +155,7 @@ export const getSellerOrders = async (req, res, next) => {
     // Add computed payment status to each order
     const ordersWithPayment = orders.map(order => ({
       ...order.toObject(),
-<<<<<<< HEAD
-      paymentStatus: order.paymentStatus || (order.isPaid ? 'Paid' : 'UnPaid')
-=======
       paymentStatus: order.paymentStatus || (order.isPaid ? 'paid' : 'unpaid')
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
     }));
 
     res.status(200).json({

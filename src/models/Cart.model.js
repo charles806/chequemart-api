@@ -23,13 +23,10 @@ const cartSchema = new mongoose.Schema(
       unique: true,
     },
     items: [cartItemSchema],
-<<<<<<< HEAD
-=======
     wishlist: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product"
     }],
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
   },
   { timestamps: true }
 );

@@ -1,6 +1,4 @@
 import Cart from "../models/Cart.model.js";
-<<<<<<< HEAD
-=======
 import Product from "../models/Product.model.js";
 
 // calculateCartTotals computes subtotal, delivery fees, and total for a cart
@@ -39,32 +37,22 @@ const calculateCartTotals = (cart) => {
     itemsBySeller
   };
 };
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
 export const getCart = async (req, res) => {
   try {
     let cart = await Cart.findOne({ user: req.user._id }).populate({
       path: "items.product",
-<<<<<<< HEAD
-      select: "name price images seller brand",
-=======
       select: "name price images seller brand deliveryFee isActive",
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
       populate: {
         path: "seller",
         select: "storeName",
       },
     });
 
-    if (!cart) {
+if (!cart) {
       cart = await Cart.create({ user: req.user._id, items: [] });
     }
 
-<<<<<<< HEAD
-    res.status(200).json({
-      success: true,
-      data: cart,
-=======
     // Filter inactive products
     const activeItems = cart.items.filter(item => item.product?.isActive !== false);
     
@@ -75,7 +63,6 @@ export const getCart = async (req, res) => {
       success: true,
       data: cart,
       totals
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
     });
   } catch (error) {
     res.status(500).json({
@@ -203,8 +190,6 @@ export const clearCart = async (req, res) => {
     });
   }
 };
-<<<<<<< HEAD
-=======
 
 // WISHLIST FUNCTIONS
 
@@ -302,4 +287,3 @@ export const removeFromWishlist = async (req, res) => {
     });
   }
 };
->>>>>>> cba3093 (Clean: remove Stripe secret completely)

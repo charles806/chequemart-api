@@ -33,13 +33,8 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-<<<<<<< HEAD
-    enum: ['Pending', 'processing', 'confirmed', 'shipped', 'delivered', 'collected', 'cancelled'],
-    default: 'Pending',
-=======
     enum: ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'collected', 'cancelled'],
     default: 'pending',
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
   },
   trackingNumber: {
     type: String,
@@ -59,13 +54,8 @@ const orderSchema = new mongoose.Schema({
   ],
   paymentStatus: {
     type: String,
-<<<<<<< HEAD
-    enum: ['Pending', 'Paid', 'Unpaid', 'Refunded'],
-    default: 'Pending',
-=======
     enum: ['pending', 'paid', 'unpaid', 'refunded'],
     default: 'pending',
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
   },
   shippingAddress: {
     fullName: String,

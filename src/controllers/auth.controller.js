@@ -413,11 +413,7 @@ export async function resolveAccount(req, res, next) {
       });
     }
 
-<<<<<<< HEAD
-    const result = await resolveAccountNumber(accountNumber, bankCode);
-=======
     const result = await resolveAccountNumber(accountNumber, bankCode, accountType);
->>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
     res.status(200).json({
       success: true,
