@@ -400,11 +400,11 @@ export async function getBanks(req, res, next) {
  * Called live on the vendor registration form to confirm the account before submitting.
  * Public route — no auth required.
  *
- * Body: { accountNumber, bankCode }
+ * Body: { accountNumber, bankCode, accountType? }
  */
 export async function resolveAccount(req, res, next) {
   try {
-    const { accountNumber, bankCode } = req.body;
+    const { accountNumber, bankCode, accountType } = req.body;
 
     if (!accountNumber || !bankCode) {
       return res.status(400).json({
@@ -413,7 +413,11 @@ export async function resolveAccount(req, res, next) {
       });
     }
 
+<<<<<<< HEAD
     const result = await resolveAccountNumber(accountNumber, bankCode);
+=======
+    const result = await resolveAccountNumber(accountNumber, bankCode, accountType);
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
     res.status(200).json({
       success: true,

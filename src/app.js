@@ -1,10 +1,12 @@
-import express, { json, urlencoded } from "express";
+import express, { json, urlencoded, raw } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
+import * as Sentry from "@sentry/node";
+import "./instrument.js"; // Initialize Sentry first
 import { initialize } from "./config/passport.js";
 
 import authRoutes from "./routes/auth.routes.js";
@@ -16,9 +18,20 @@ import orderRoutes from "./routes/order.routes.js";
 import cartRoutes from "./routes/cart.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
+<<<<<<< HEAD
+=======
+import disputeRoutes from "./routes/dispute.routes.js";
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
 const app = express();
+
+
+// ─────────────────────────────────────────
+// ⚠️ PAYSTACK WEBHOOK - Raw body parsing
+// Must come BEFORE json() middleware
+// ─────────────────────────────────────────
+app.use(["/api/webhooks/paystack", "/api/webhook/paystack"], raw({ type: 'application/json' }));
 
 // ─────────────────────────────────────────
 // 🔐 Security
@@ -148,11 +161,23 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/webhooks", webhookRoutes);
+<<<<<<< HEAD
+=======
+app.use("/api/webhook", webhookRoutes); // Alias for Paystack singular callback
+app.use("/api/disputes", disputeRoutes);
+
+app.get("/debug-sentry", function mainHandler(req, res) {
+  throw new Error("My first Sentry error!");
+});
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
 // ─────────────────────────────────────────
 // ❌ Error Handling
 // ─────────────────────────────────────────
 app.use(notFound);
+if (Sentry.Handlers?.errorHandler) {
+  app.use(Sentry.Handlers.errorHandler());
+}
 app.use(errorHandler);
 
 export default app;

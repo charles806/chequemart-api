@@ -67,13 +67,35 @@ const ProductSchema = new Schema(
       type: Boolean,
       default: false,
     },
-    specifications: {
+specifications: {
       type: Schema.Types.Mixed,
       default: {},
     },
+    deliveryFee: {
+      type: Number,
+      default: 0,
+      min: [0, "Delivery fee cannot be negative"],
+      comment: "Fixed delivery fee for this product (separate from shipping)"
+    },
+    variants: {
+      type: [{
+        name: String,
+        value: String,
+        priceAdjustment: {
+          type: Number,
+          default: 0
+        },
+        stock: {
+          type: Number,
+          default: 0
+        }
+      }],
+      default: [],
+      comment: "Product variants (e.g., Size: L, Color: Red)"
+    },
   },
   {
-    timestamps: true,
+    timestamps: true
   }
 );
 

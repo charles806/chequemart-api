@@ -2,7 +2,13 @@ import Order from '../models/Order.model.js';
 import Product from '../models/Product.model.js';
 import Escrow from '../models/Escrow.model.js';
 import User from '../models/User.model.js';
+<<<<<<< HEAD
 import { initializeTransaction } from '../utils/paystack.utils.js';
+=======
+import { sequelize } from '../config/postgres.js';
+import Wallet from '../models/Wallet.model.js';
+import { initializeTransaction, createBulkSplit, listSplits } from '../utils/paystack.utils.js';
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
 import { validateTransition } from '../utils/statusTransitions.js';
 import { sendStatusNotification } from '../utils/notifications.js';
 
@@ -21,11 +27,36 @@ export const createOrder = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "No items in order" });
     }
 
+<<<<<<< HEAD
+=======
+    // Fetch all products in one query to avoid N+1 performance issue
+    const productIds = items.map(item => item.productId);
+    const products = await Product.find({ _id: { $in: productIds } });
+    
+    // Create a map for quick lookup
+    const productMap = new Map();
+    for (const p of products) {
+      productMap.set(p._id.toString(), p);
+    }
+
+    // Validate all products exist
+    for (const item of items) {
+      const product = productMap.get(item.productId);
+      if (!product) {
+        return res.status(404).json({ success: false, message: `Product ${item.productId} not found` });
+      }
+      if (product.stock < item.quantity) {
+        return res.status(400).json({ success: false, message: `Insufficient stock for ${product.name}` });
+      }
+    }
+
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     // In a multi-vendor marketplace, we group items by seller
     // Each seller gets a separate order record
     const sellersMap = new Map();
 
     for (const item of items) {
+<<<<<<< HEAD
       const product = await Product.findById(item.productId);
       if (!product) {
         return res.status(404).json({ success: false, message: `Product ${item.productId} not found` });
@@ -34,6 +65,9 @@ export const createOrder = async (req, res, next) => {
       if (product.stock < item.quantity) {
         return res.status(400).json({ success: false, message: `Insufficient stock for ${product.name}` });
       }
+=======
+      const product = productMap.get(item.productId);
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
       const sellerId = product.seller.toString();
       if (!sellersMap.has(sellerId)) {
@@ -58,7 +92,21 @@ export const createOrder = async (req, res, next) => {
       
       // Update stock
       product.stock -= item.quantity;
+<<<<<<< HEAD
       await product.save();
+=======
+    }
+
+    // Batch update stock for all products
+    const stockUpdates = products.map(p => ({
+      updateOne: {
+        filter: { _id: p._id },
+        update: { $set: { stock: p.stock } }
+      }
+    }));
+    if (stockUpdates.length > 0) {
+      await Product.bulkWrite(stockUpdates);
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     }
 
     const createdOrders = [];
@@ -284,6 +332,44 @@ export const markReceived = async (req, res, next) => {
     
     await order.save();
 
+<<<<<<< HEAD
+=======
+    // Release escrow funds to seller's available balance in Postgres
+    // This moves fund from HELD -> RELEASED and updates wallet
+    try {
+      const sellerId = order.seller.toString();
+      
+      // Find escrow record for this order
+      const escrow = await Escrow.findOne({ where: { order_id: order._id.toString() } });
+      if (escrow && escrow.status === 'HELD') {
+        // Update escrow status to RELEASED
+        escrow.status = 'RELEASED';
+        await escrow.save();
+
+        // Update seller's wallet: pending -> available
+        // Use transaction for atomicity
+        await sequelize.transaction(async (t) => {
+          const wallet = await Wallet.findOne({ where: { seller_id: sellerId }, transaction: t });
+          
+          if (wallet) {
+            const sellerAmount = parseFloat(escrow.seller_amount);
+            
+            // Move from pending to available
+            wallet.pending_balance = Math.max(0, parseFloat(wallet.pending_balance) - sellerAmount);
+            wallet.available_balance = parseFloat(wallet.available_balance) + sellerAmount;
+            wallet.total_earned = parseFloat(wallet.total_earned) + sellerAmount;
+            
+            await wallet.save({ transaction: t });
+            console.log(`[Wallet] Released ${sellerAmount} to seller ${sellerId} available balance`);
+          }
+        });
+      }
+    } catch (walletError) {
+      // Log error but don't fail the request - order delivery is confirmed
+      console.error('Failed to release escrow funds:', walletError.message);
+    }
+
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     await sendStatusNotification(order, previousStatus);
 
     res.status(200).json({
@@ -356,7 +442,11 @@ export const updateOrderStatus = async (req, res, next) => {
 };
 
 /**
+<<<<<<< HEAD
  * @desc    Initialize Paystack Payment with Split
+=======
+ * @desc    Initialize Paystack Payment with Dynamic Split for Multi-Vendor
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
  * @route   POST /api/orders/initialize-payment
  * @access  Private (Buyer)
  */
@@ -378,6 +468,7 @@ export const initializePayment = async (req, res, next) => {
     const totalAmount = orders.reduce((sum, order) => sum + order.totalAmount, 0);
     const amountInKobo = Math.round(totalAmount * 100);
 
+<<<<<<< HEAD
     // 3. Handle Split Payment Logic
     // For MVP, if multiple orders exist, we assume they might be from different sellers.
     // However, Paystack initialize simple split only supports ONE subaccount.
@@ -385,6 +476,76 @@ export const initializePayment = async (req, res, next) => {
     // If there are multiple sellers, we'd need a "Split Object" (Phase 2).
     
     const uniqueSellers = [...new Set(orders.map(o => o.seller.toString()))];
+=======
+    // 3. Handle Dynamic Split Payment for Multiple Sellers
+    const uniqueSellers = [...new Set(orders.map(o => o.seller.toString()))];
+    
+    if (uniqueSellers.length > 1) {
+      // Multi-vendor: Use Paystack dynamic split
+      // Build subaccounts array with each seller's share (minus commission)
+      const subaccounts = [];
+      
+      for (const sellerId of uniqueSellers) {
+        const seller = await User.findById(sellerId);
+        if (seller?.sellerInfo?.paystackSubaccountCode) {
+          // Calculate what percentage goes to this seller
+          const sellerOrders = orders.filter(o => o.seller.toString() === sellerId);
+          const sellerTotal = sellerOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+          const sellerShare = sellerTotal * (1 - COMMISSION_RATE);
+          
+          // Calculate percentage share (e.g., 8000 = 80% in Paystack's base)
+          const sharePercent = Math.round((sellerShare / totalAmount) * 10000);
+          
+          subaccounts.push({
+            subaccount: seller.sellerInfo.paystackSubaccountCode,
+            share: sharePercent
+          });
+        }
+      }
+
+      if (subaccounts.length > 0) {
+        // Create a one-time split configuration
+        try {
+          const splitConfig = await createBulkSplit({
+            name: `split_${Date.now()}`,
+            subaccounts
+          });
+          
+          const result = await initializeTransaction({
+            email: req.user.email,
+            amount: amountInKobo,
+            metadata: {
+              orderIds,
+              buyerId: req.user._id,
+              custom_fields: [
+                { display_name: "Order IDs", variable_name: "order_ids", value: orderIds.join(', ') }
+              ]
+            },
+            split_code: splitConfig.split_code,
+            callback_url: `${process.env.CLIENT_URL}/orders`,
+            return_url: `${process.env.CLIENT_URL}/orders`
+          });
+
+          // Store payment reference on orders for later verification
+          const paymentReference = result.reference;
+          await Order.updateMany(
+            { _id: { $in: orderIds } },
+            { paymentReference }
+          );
+
+          return res.status(200).json({
+            success: true,
+            data: result
+          });
+        } catch (splitError) {
+          console.error('Failed to create split:', splitError.message);
+          // Fall through to simple payment without split
+        }
+      }
+    }
+
+    // 4. Single seller: Use simple subaccount (existing logic)
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     let subaccount = null;
     let transaction_charge = null;
 
@@ -396,7 +557,11 @@ export const initializePayment = async (req, res, next) => {
       }
     }
 
+<<<<<<< HEAD
     // 4. Call Paystack
+=======
+    // 5. Call Paystack
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     const result = await initializeTransaction({
       email: req.user.email,
       amount: amountInKobo,
@@ -422,7 +587,11 @@ export const initializePayment = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
+<<<<<<< HEAD
       data: result // Contains authorization_url and reference
+=======
+      data: result
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     });
   } catch (error) {
     console.error("Payment Initialization Error:", error.message);

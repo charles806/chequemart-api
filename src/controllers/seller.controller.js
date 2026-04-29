@@ -3,8 +3,16 @@ import Wallet from '../models/Wallet.model.js';
 import Transaction from '../models/Transaction.model.js';
 import BankDetail from '../models/BankDetail.model.js';
 import Escrow from '../models/Escrow.model.js';
+<<<<<<< HEAD
 import { validateTransition } from '../utils/statusTransitions.js';
 import { sendStatusNotification } from '../utils/notifications.js';
+=======
+import Withdrawal from '../models/Withdrawal.model.js';
+import { validateTransition } from '../utils/statusTransitions.js';
+import { sendStatusNotification } from '../utils/notifications.js';
+import { createTransfer, createRecipient, resolveAccountNumber } from '../utils/paystack.utils.js';
+import { sequelize } from '../config/postgres.js';
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
 
 /**
  * GET /api/seller/wallet
@@ -152,7 +160,11 @@ export const getSellerOrders = async (req, res, next) => {
     // Add computed payment status to each order
     const ordersWithPayment = orders.map(order => ({
       ...order.toObject(),
+<<<<<<< HEAD
       paymentStatus: order.paymentStatus || (order.isPaid ? 'Paid' : 'UnPaid')
+=======
+      paymentStatus: order.paymentStatus || (order.isPaid ? 'paid' : 'unpaid')
+>>>>>>> cba3093 (Clean: remove Stripe secret completely)
     }));
 
     res.status(200).json({
@@ -254,6 +266,113 @@ export const getBankAccounts = async (req, res, next) => {
 };
 
 /**
+ * POST /api/seller/bank-accounts
+ * Save bank details and create Paystack transfer recipient
+ */
+export const addBankAccount = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const { bankCode, accountNumber, accountName, isDefault } = req.body;
+
+    // Validate required fields
+    if (!bankCode || !accountNumber || !accountName) {
+      return res.status(400).json({
+        success: false,
+        message: "bankCode, accountNumber, and accountName are required"
+      });
+    }
+
+    // Resolve account number with Paystack to verify it's valid
+    let resolvedName = accountName;
+    try {
+      const resolved = await resolveAccountNumber(accountNumber, bankCode);
+      resolvedName = resolved.account_name;
+    } catch (resolveErr) {
+      console.warn("Could not resolve account:", resolveErr.message);
+      // Continue anyway - might work for some banks
+    }
+
+    // Get bank name
+    const banksList = await import('../utils/paystack.utils.js').then(m => m.getBankList());
+    const bank = banksList?.find(b => b.code === bankCode);
+    const bankName = bank?.name || bankCode;
+
+    // Create transfer recipient in Paystack
+    let recipientCode = null;
+    try {
+      const recipient = await createRecipient({
+        type: 'nuban',
+        name: resolvedName,
+        account_number: accountNumber,
+        bank_code: bankCode
+      });
+      recipientCode = recipient.recipient_code;
+    } catch (recipientErr) {
+      console.error("Failed to create recipient:", recipientErr.message);
+      return res.status(400).json({
+        success: false,
+        message: "Failed to create bank recipient. Check bank details."
+      });
+    }
+
+    // Save bank detail (if not default, make it default)
+    const bankDetail = await BankDetail.create({
+      seller_id: sellerId,
+      bank_name: bankName,
+      bank_code: bankCode,
+      account_number: accountNumber,
+      account_name: resolvedName,
+      recipient_code: recipientCode,
+      is_default: isDefault || false
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Bank account added successfully",
+      bankDetail: {
+        id: bankDetail.id,
+        bank_name: bankDetail.bank_name,
+        account_number: accountNumber.slice(-4), // Only last 4 digits
+        account_name: bankDetail.account_name,
+        is_default: bankDetail.is_default
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * DELETE /api/seller/bank-accounts/:id
+ */
+export const deleteBankAccount = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const { id } = req.params;
+
+    const bankDetail = await BankDetail.findOne({
+      where: { id, seller_id: sellerId }
+    });
+
+    if (!bankDetail) {
+      return res.status(404).json({
+        success: false,
+        message: "Bank account not found"
+      });
+    }
+
+    await bankDetail.destroy();
+
+    res.status(200).json({
+      success: true,
+      message: "Bank account removed"
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * GET /api/seller/escrow/summary
  */
 export const getEscrowSummary = async (req, res, next) => {
@@ -285,6 +404,133 @@ export const getSellerEscrows = async (req, res, next) => {
       order: [['created_at', 'DESC']]
     });
     res.status(200).json({ success: true, escrows });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/seller/withdraw
+ * Initiates a withdrawal request from available balance.
+ * Creates a Withdrawal record and triggers Paystack transfer.
+ */
+export const requestWithdrawal = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const { amount, bankDetailId } = req.body;
+
+    // Validate amount
+    const withdrawalAmount = parseFloat(amount);
+    if (isNaN(withdrawalAmount) || withdrawalAmount <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid withdrawal amount" });
+    }
+
+    // Get seller's wallet
+    const wallet = await Wallet.findOne({ where: { seller_id: sellerId } });
+    if (!wallet || parseFloat(wallet.available_balance) < withdrawalAmount) {
+      return res.status(400).json({ success: false, message: "Insufficient available balance" });
+    }
+
+    // Get bank detail
+    const bankDetail = await BankDetail.findOne({ 
+      where: { id: bankDetailId, seller_id: sellerId }
+    });
+    if (!bankDetail) {
+      return res.status(400).json({ success: false, message: "Bank account not found" });
+    }
+
+    // Create or get recipient code
+    let recipientCode = bankDetail.recipient_code;
+    if (!recipientCode) {
+      // Create a transfer recipient in Paystack
+      const recipientData = await createRecipient({
+        type: 'nuban',
+        name: bankDetail.account_name,
+        account_number: bankDetail.account_number,
+        bank_code: bankDetail.bank_code
+      });
+      recipientCode = recipientData.recipient_code;
+      
+      // Save recipient code to bank detail
+      bankDetail.recipient_code = recipientCode;
+      await bankDetail.save();
+    }
+
+    // Generate unique reference
+    const reference = `wd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const amountInKobo = Math.round(withdrawalAmount * 100);
+
+    // Create Withdrawal record (PENDING)
+    const withdrawal = await Withdrawal.create({
+      seller_id: sellerId,
+      amount: withdrawalAmount,
+      status: 'PENDING'
+    });
+
+    // Deduct from available balance (transaction)
+    await sequelize.transaction(async (t) => {
+      const w = await Wallet.findOne({ where: { seller_id: sellerId }, transaction: t });
+      w.available_balance = parseFloat(w.available_balance) - withdrawalAmount;
+      await w.save({ transaction: t });
+    });
+
+    // Trigger Paystack transfer
+    let transferResult = null;
+    try {
+      transferResult = await createTransfer({
+        amount: amountInKobo,
+        recipient: recipientCode,
+        reference
+      });
+
+      // Update withdrawal with transfer ID
+      withdrawal.paystack_transfer_id = transferResult.transfer_code;
+      await withdrawal.save();
+    } catch (transferError) {
+      // If transfer fails, rollback wallet and mark withdrawal as failed
+      console.error('Paystack transfer failed:', transferError.message);
+      
+      await sequelize.transaction(async (t) => {
+        const w = await Wallet.findOne({ where: { seller_id: sellerId }, transaction: t });
+        w.available_balance = parseFloat(w.available_balance) + withdrawalAmount;
+        await w.save({ transaction: t });
+      });
+      
+      withdrawal.status = 'FAILED';
+      await withdrawal.save();
+      
+      return res.status(500).json({ 
+        success: false, 
+        message: "Transfer failed. Please try again." 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Withdrawal initiated successfully",
+      withdrawal: {
+        id: withdrawal.id,
+        amount: withdrawal.amount,
+        status: withdrawal.status,
+        reference
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/seller/withdrawals
+ */
+export const getWithdrawals = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const withdrawals = await Withdrawal.findAll({
+      where: { seller_id: sellerId },
+      order: [['created_at', 'DESC']]
+    });
+    res.status(200).json({ success: true, withdrawals });
   } catch (error) {
     next(error);
   }

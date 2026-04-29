@@ -129,6 +129,21 @@ const UserSchema = new Schema(
       accountNumber: { type: String, default: null },
       accountName: { type: String, default: null },
     },
+
+    deliveryAddresses: {
+      type: [{
+        label: { type: String, default: 'Home' },
+        fullName: { type: String, required: true },
+        phone: { type: String, required: true },
+        address: { type: String, required: true },
+        city: { type: String, required: true },
+        state: { type: String, required: true },
+        landmark: { type: String },
+        isDefault: { type: Boolean, default: false }
+      }],
+      default: [],
+      comment: "Saved delivery addresses for buyers"
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt

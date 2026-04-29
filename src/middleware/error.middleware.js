@@ -10,8 +10,10 @@
  *    - Mongoose cast errors (invalid ObjectId)
  *    - JWT errors
  *    - General application errors
+ *    - Sentry error capture
  * ─
  */
+import * as Sentry from "@sentry/node";
 
 /**
  * errorHandler
@@ -56,6 +58,20 @@ const errorHandler = (err, req, res, next) => {
   if (err.name === "JsonWebTokenError") {
     statusCode = 401;
     message = "Invalid token.";
+  }
+
+  // 📡 Capture error with Sentry (if configured)
+  if (process.env.SENTRY_DSN && statusCode >= 500) {
+    Sentry.captureException(err, {
+      extra: {
+        request: {
+          method: req.method,
+          url: req.originalUrl,
+          headers: req.headers,
+        },
+        statusCode,
+      },
+    });
   }
 
   // Log error in development

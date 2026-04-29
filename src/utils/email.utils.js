@@ -1,17 +1,21 @@
 import { createTransport } from "nodemailer";
 
+// Gmail SMTP transporter using Google App Password
+// Uses SMTP_USER and SMTP_PASS from .env
 let transporter = null;
 
 const getTransporter = () => {
+  // Use Gmail-specific env vars
   if (!transporter && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    // Gmail SMTP: host is smtp.gmail.com, port 465 (SSL) or 587 (TLS)
     const port = parseInt(process.env.SMTP_PORT || "587");
     transporter = createTransport({
-      host: process.env.SMTP_HOST,
+      host: "smtp.gmail.com",
       port: port,
-      secure: port === 465,
+      secure: port === 465, // true for 465 (SSL), false for 587 (TLS)
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        pass: process.env.SMTP_PASS, // Google App Password (16 chars)
       },
       tls: {
         rejectUnauthorized: false,
@@ -22,15 +26,15 @@ const getTransporter = () => {
 };
 
 /**
- * sendEmail - Generic email sender (fails silently if SMTP not configured)
+ * sendEmail - Generic email sender using Gmail SMTP
+ * Returns null if SMTP_USER/SMTP_PASS not configured
  */
 export const sendEmail = async ({ to, subject, html, text }) => {
   const mailTransporter = getTransporter();
   
   if (!mailTransporter) {
-    console.warn("⚠️ Email transporter not configured. Skipping email send.");
-    console.log("SMTP check:", { 
-      SMTP_HOST: process.env.SMTP_HOST, 
+    console.warn("⚠️ Gmail SMTP not configured. Skipping email send.");
+    console.log("Gmail check:", { 
       SMTP_USER: process.env.SMTP_USER ? "present" : "missing",
       SMTP_PASS: process.env.SMTP_PASS ? "present" : "missing"
     });
@@ -39,20 +43,18 @@ export const sendEmail = async ({ to, subject, html, text }) => {
 
   try {
     const mailOptions = {
-      from: process.env.EMAIL_FROM,
+      from: process.env.SMTP_USER || "Chequemart<noreply@chequemart.com>",
       to,
       subject,
       html,
       text: text || html.replace(/<[^>]*>/g, ""),
     };
     console.log("📧 Sending email to:", to, "Subject:", subject);
-    console.log("📧 SMTP config:", { host: process.env.SMTP_HOST, port: process.env.SMTP_PORT, user: process.env.SMTP_USER });
     const info = await mailTransporter.sendMail(mailOptions);
     console.log("✅ Email sent successfully:", info.messageId);
     return info;
   } catch (error) {
     console.error("⚠️ Failed to send email:", error.message);
-    console.error("⚠️ SMTP Error details:", error);
     return null;
   }
 };
