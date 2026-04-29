@@ -38,30 +38,34 @@ app.use(["/api/webhooks/paystack", "/api/webhook/paystack"], raw({ type: 'applic
 app.use(helmet());
 
 // ─────────────────────────────────────────
-// 🌍 CORS CONFIG (FIXED)
+// 🌍 CORS CONFIG
 // ─────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL,
+  "https://www.chequemart.com",
+  "https://chequemart.com",
+  /\.vercel\.app$/,
+  /\.chequemart\.com$/,
 ].filter(Boolean);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow requests like Postman, mobile apps
       if (!origin) return callback(null, true);
 
-      const isAllowed =
-        allowedOrigins.includes(origin) ||
-        origin.endsWith(".vercel.app") ||
-        origin.endsWith(".chequemart.com") ||
-        origin.endsWith("chequemart.com");
+      const isAllowed = allowedOrigins.some((allowed) => {
+        if (allowed instanceof RegExp) {
+          return allowed.test(origin);
+        }
+        return allowed === origin;
+      });
 
       if (isAllowed) {
         return callback(null, true);
       }
 
       console.error("❌ CORS blocked:", origin);
-      return callback(new Error("Not allowed by CORS"));
+      callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -69,7 +73,6 @@ app.use(
   })
 );
 
-// ✅ IMPORTANT: Handle preflight requests
 app.options("*", cors());
 
 
