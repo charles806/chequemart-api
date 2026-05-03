@@ -1,7 +1,7 @@
 import { Router } from "express";
 const router = Router();
 
-import { register, registerVendor, login, logout, refreshToken, verifyEmail, forgotPassword, resetPassword, getMe, getBanks, resolveAccount, becomeSeller, completeOnboarding } from "../controllers/auth.controller.js";
+import { register, registerVendor, login, logout, refreshToken, verifyEmail, forgotPassword, forgotPasswordOTP, verifyResetOTP, resetPasswordOTP, resetPassword, getMe, getBanks, resolveAccount, becomeSeller, completeOnboarding, googleCallback } from "../controllers/auth.controller.js";
 
 import { protect } from "../middleware/auth.middleware.js";
 import { 
@@ -34,6 +34,9 @@ router.get("/verify-email", verifyEmailValidation, validate, verifyEmail);
 
 //  Password Reset 
 router.post("/forgot-password", forgotPasswordValidation, validate, forgotPassword);
+router.post("/forgot-password-otp", forgotPasswordOTP);
+router.post("/verify-reset-otp", verifyResetOTP);
+router.post("/reset-password-otp", resetPasswordOTP);
 router.post("/reset-password", resetPasswordValidation, validate, resetPassword);
 
 //  Paystack Bank Helpers (used in vendor registration form)
@@ -57,9 +60,9 @@ router.post("/complete-onboarding", protect, completeOnboarding);
 // ════════════════════════════════════════════════════════════════════════════════
 
 //  Google OAuth (Phase 2)
-// const passport = require("passport");
-// router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
-// router.get("/google/callback", passport.authenticate("google", { session: false, failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth_failed` }), googleCallback);
+import passport from "passport";
+router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
+router.get("/google/callback", passport.authenticate("google", { session: false, failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth_failed` }), googleCallback);
 
 //  Phone OTP via SMS (Phase 2)
 // router.post("/send-otp", sendPhoneOTP);

@@ -99,6 +99,14 @@ const UserSchema = new Schema(
       select: false,
     },
 
+    passwordResetOTP: {
+      type: {
+        code: { type: String, select: false },
+        expiresAt: { type: Date, select: false }
+      },
+      select: false,
+    },
+
     refreshToken: {
       type: String,
       select: false,

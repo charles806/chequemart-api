@@ -81,8 +81,26 @@ export const sendVerificationEmail = async (to, name, token) => {
   });
 };
 
-export const sendPasswordResetEmail = async (to, name, token) => {
-  const resetURL = `${process.env.CLIENT_URL}/reset-password?token=${token}`;
+export const sendPasswordResetEmail = async (to, name, tokenOrOtp, isOTP = false) => {
+  if (isOTP && typeof tokenOrOtp === 'string') {
+    return sendEmail({
+      to,
+      subject: "Your Chequemart Password Reset Code",
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+          <h2 style="color: #333;">Password Reset Code</h2>
+          <p>Hi ${name}, here is your password reset code:</p>
+          <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; padding: 20px; background: #f5f5f5; border-radius: 8px; text-align: center; margin: 20px 0;">
+            ${tokenOrOtp}
+          </div>
+          <p style="color:#888; font-size:13px;">This code expires in 10 minutes.</p>
+          <p style="color:#888; font-size:13px;">If you didn't request this, your password won't be changed.</p>
+        </div>
+      `,
+    });
+  }
+  
+  const resetURL = `${process.env.CLIENT_URL}/reset-password?token=${tokenOrOtp}`;
 
   return sendEmail({
     to,

@@ -457,11 +457,8 @@ export async function googleCallback(req, res, next) {
     user.refreshToken = refreshToken;
     await user.save({ validateBeforeSave: false });
 
-    // Set cookies
-    setTokenCookies(res, accessToken, refreshToken);
-
-    // Redirect to client dashboard
-    res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+    // Redirect to client with token in URL
+    res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${accessToken}`);
   } catch (error) {
     next(error);
   }
@@ -691,6 +688,215 @@ export async function forgotPassword(req, res, next) {
     });
   } catch (error) {
     console.error("❌ Forgot password error:", error);
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  9B. FORGOT PASSWORD (OTP)
+// ─────────────────────────────────────────────
+/**
+ * POST /api/auth/forgot-password-otp
+ * Sends OTP for password reset via email or SMS.
+ *
+ * Body: { email } or { phone }
+ */
+export async function forgotPasswordOTP(req, res, next) {
+  try {
+    const { email, phone } = req.body;
+    const identifier = email || phone;
+
+    if (!identifier) {
+      return res.status(400).json({
+        success: false,
+        message: "Email or phone is required.",
+      });
+    }
+
+    // Find user by email or phone
+    let user;
+    if (email) {
+      user = await User.findOne({ email: email.toLowerCase() });
+    } else {
+      user = await User.findOne({ phone });
+    }
+
+    // Always return success to prevent enumeration
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        message: "If this account is registered, a reset code has been sent.",
+      });
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const hashedOtp = hashOTP(otp);
+    const expiresAt = getOTPExpiry();
+
+    user.passwordResetOTP = { code: hashedOtp, expiresAt };
+    await user.save({ validateBeforeSave: false });
+
+    // Send OTP via email or SMS
+    if (email) {
+      try {
+        await sendPasswordResetEmail(user.email, user.name, otp, true);
+      } catch (emailError) {
+        console.error("Failed to send reset email:", emailError.message);
+      }
+    } else {
+      try {
+        sendOTPviaSMS(phone, otp);
+      } catch (smsError) {
+        console.error("Failed to send SMS:", smsError.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "If this account is registered, a reset code has been sent.",
+    });
+  } catch (error) {
+    console.error("❌ Forgot password OTP error:", error);
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  9C. VERIFY RESET OTP
+// ─────────────────────────────────────────────
+/**
+ * POST /api/auth/verify-reset-otp
+ * Verifies the OTP and returns a reset token.
+ *
+ * Body: { identifier, otp }
+ */
+export async function verifyResetOTP(req, res, next) {
+  try {
+    const { identifier, otp } = req.body;
+
+    if (!identifier || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Identifier and OTP are required.",
+      });
+    }
+
+    // Find user by email or phone
+    let user;
+    if (identifier.includes('@')) {
+      user = await User.findOne({ email: identifier.toLowerCase() }).select('+passwordResetOTP');
+    } else {
+      user = await User.findOne({ phone: identifier }).select('+passwordResetOTP');
+    }
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid code.",
+      });
+    }
+
+    // Check OTP exists
+    if (!user.passwordResetOTP) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired code. Please request a new one.",
+      });
+    }
+
+    // Check OTP expiry
+    if (!user.passwordResetOTP.expiresAt || user.passwordResetOTP.expiresAt < new Date()) {
+      user.passwordResetOTP = undefined;
+      await user.save({ validateBeforeSave: false });
+      return res.status(400).json({
+        success: false,
+        message: "Code has expired. Please request a new one.",
+      });
+    }
+
+    // Verify OTP
+    const isValid = await verifyOTP(otp, user.passwordResetOTP.code);
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid code.",
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    
+    user.passwordResetToken = resetToken;
+    user.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
+    user.passwordResetOTP = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    res.status(200).json({
+      success: true,
+      message: "Code verified",
+      resetToken,
+    });
+  } catch (error) {
+    console.error("❌ Verify reset OTP error:", error);
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  10A. RESET PASSWORD (OTP)
+// ─────────────────────────────────────────────
+/**
+ * POST /api/auth/reset-password-otp
+ * Resets password using reset token from verify-reset-otp.
+ *
+ * Body: { resetToken, password }
+ */
+export async function resetPasswordOTP(req, res, next) {
+  try {
+    const { resetToken, password } = req.body;
+
+    if (!resetToken || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset token and new password are required.",
+      });
+    }
+
+    // Find user by reset token
+    const user = await User.findOne({
+      passwordResetToken: resetToken,
+      passwordResetExpiresAt: { $gt: new Date() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset link.",
+      });
+    }
+
+    // Check password is not same as old
+    const isSamePassword = await bcrypt.compare(password, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password cannot be the same as your current password.",
+      });
+    }
+
+    // Update password
+    user.password = await bcrypt.hash(password, 12);
+    user.passwordResetToken = undefined;
+    user.passwordResetExpiresAt = undefined;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password reset successfully.",
+    });
+  } catch (error) {
+    console.error("❌ Reset password OTP error:", error);
     next(error);
   }
 }
