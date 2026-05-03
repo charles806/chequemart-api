@@ -44,6 +44,8 @@ const allowedOrigins = [
   process.env.CLIENT_URL,
   "https://www.chequemart.com",
   "https://chequemart.com",
+  "http://localhost:5173",
+  "http://localhost:3000",
   /\.vercel\.app$/,
   /\.chequemart\.com$/,
 ].filter(Boolean);
@@ -51,7 +53,10 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) {
+        return callback(null, true);
+      }
 
       const isAllowed = allowedOrigins.some((allowed) => {
         if (allowed instanceof RegExp) {
@@ -64,16 +69,21 @@ app.use(
         return callback(null, true);
       }
 
-      console.error("❌ CORS blocked:", origin);
+      // For production, allow all subdomains and Vercel previews
+      console.log("⚠️ CORS check origin:", origin);
       callback(null, true);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
 );
 
-app.options("*", cors());
+app.options("*", cors({
+  origin: true,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+}));
 
 
 // ─────────────────────────────────────────
