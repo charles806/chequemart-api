@@ -9,21 +9,20 @@ import {
   addToWishlist,
   removeFromWishlist
 } from "../controllers/cart.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+import { protect, optionalAuth } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.use(protect); // All cart routes are protected
+// Read operations - optional auth (works for logged in and logged out users)
+router.get("/", optionalAuth, getCart);
+router.get("/wishlist", optionalAuth, getWishlist);
 
-router.get("/", getCart);
-router.post("/add", addToCart);
-router.put("/update", updateCartQty);
-router.delete("/remove/:productId", removeFromCart);
-router.delete("/clear", clearCart);
-
-// Wishlist routes
-router.get("/wishlist", getWishlist);
-router.post("/wishlist/add", addToWishlist);
-router.delete("/wishlist/remove/:productId", removeFromWishlist);
+// Write operations - protected (require auth)
+router.post("/add", protect, addToCart);
+router.put("/update", protect, updateCartQty);
+router.delete("/remove/:productId", protect, removeFromCart);
+router.delete("/clear", protect, clearCart);
+router.post("/wishlist/add", protect, addToWishlist);
+router.delete("/wishlist/remove/:productId", protect, removeFromWishlist);
 
 export default router;

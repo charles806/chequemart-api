@@ -106,4 +106,45 @@ const restrictTo = (...roles) => {
   };
 };
 
-export { protect, restrictTo };
+export { protect, restrictTo, optionalAuth };
+
+// ─────────────────────────────────────────
+// optionalAuth - Attach user if token exists, but allow unauthenticated access
+// ─────────────────────────────────────────
+const optionalAuth = async (req, res, next) => {
+  try {
+    let token;
+
+    // 1. Try to get token from Authorization header
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+
+    // 2. Fall back to cookie
+    if (!token && req.cookies?.accessToken) {
+      token = req.cookies.accessToken;
+    }
+
+    // If no token, continue without user (optional auth)
+    if (!token) {
+      return next();
+    }
+
+    // Verify token
+    const decoded = await verifyAccessToken(token);
+    
+    // Attach user to request
+    const user = await User.findById(decoded.id).select("-password");
+    if (user) {
+      req.user = user;
+    }
+
+    next();
+  } catch (error) {
+    // On error, just continue without user
+    next();
+  }
+};

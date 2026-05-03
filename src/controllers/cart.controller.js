@@ -40,6 +40,15 @@ const calculateCartTotals = (cart) => {
 
 export const getCart = async (req, res) => {
   try {
+    // Return empty cart for unauthenticated users
+    if (!req.user) {
+      return res.status(200).json({
+        success: true,
+        data: { user: null, items: [] },
+        totals: { subtotal: 0, deliveryFee: 0, total: 0 }
+      });
+    }
+    
     let cart = await Cart.findOne({ user: req.user._id }).populate({
       path: "items.product",
       select: "name price images seller brand deliveryFee isActive",
@@ -49,7 +58,7 @@ export const getCart = async (req, res) => {
       },
     });
 
-if (!cart) {
+    if (!cart) {
       cart = await Cart.create({ user: req.user._id, items: [] });
     }
 
@@ -195,6 +204,14 @@ export const clearCart = async (req, res) => {
 
 export const getWishlist = async (req, res) => {
   try {
+    // Return empty wishlist for unauthenticated users
+    if (!req.user) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+    
     let cart = await Cart.findOne({ user: req.user._id }).populate({
       path: "wishlist",
       select: "name price images seller brand isActive",
