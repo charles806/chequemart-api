@@ -174,7 +174,6 @@ app.use("/api/cart", cartRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/webhooks", webhookRoutes);
 
-app.use("/api/webhook", webhookRoutes); // Alias for Paystack singular callback
 app.use("/api/disputes", disputeRoutes);
 
 // Health check and root

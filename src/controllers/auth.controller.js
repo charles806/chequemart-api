@@ -74,7 +74,18 @@ const issueTokensAndRespond = async (user, status, res) => {
  */
 export async function register(req, res, next) {
   try {
-    const { name, email, phone, password, role = 'buyer', storeName, businessCategory, businessAddress, bankCode, accountNumber } = req.body;
+    const {
+      name,
+      email,
+      phone,
+      password,
+      role = "buyer",
+      storeName,
+      businessCategory,
+      businessAddress,
+      bankCode,
+      accountNumber,
+    } = req.body;
 
     // ── Validation ──────────────────────────────────────────────────────
     if (!name || !password) {
@@ -100,7 +111,7 @@ export async function register(req, res, next) {
     }
 
     // Validate role
-    if (!['buyer', 'seller'].includes(role)) {
+    if (!["buyer", "seller"].includes(role)) {
       return res.status(400).json({
         success: false,
         message: "Role must be either 'buyer' or 'seller'.",
@@ -108,11 +119,12 @@ export async function register(req, res, next) {
     }
 
     // Seller-specific validation
-    if (role === 'seller') {
+    if (role === "seller") {
       if (!storeName || !businessCategory || !businessAddress) {
         return res.status(400).json({
           success: false,
-          message: "Store name, business category, and business address are required for sellers.",
+          message:
+            "Store name, business category, and business address are required for sellers.",
         });
       }
     }
@@ -147,7 +159,7 @@ export async function register(req, res, next) {
 
     // ── Prepare seller info if role is seller ───────────────────────────
     let sellerInfo = {};
-    if (role === 'seller') {
+    if (role === "seller") {
       sellerInfo = {
         storeName,
         businessCategory,
@@ -160,7 +172,10 @@ export async function register(req, res, next) {
       if (bankCode && accountNumber) {
         try {
           // Verify bank account with Paystack
-          const resolvedAccount = await resolveAccountNumber(accountNumber, bankCode);
+          const resolvedAccount = await resolveAccountNumber(
+            accountNumber,
+            bankCode,
+          );
           const subaccount = await createSubaccount({
             businessName: storeName,
             bankCode,
@@ -174,7 +189,10 @@ export async function register(req, res, next) {
           sellerInfo.accountNumber = accountNumber;
           sellerInfo.accountName = resolvedAccount.account_name;
         } catch (paystackError) {
-          console.warn('Paystack subaccount creation failed:', paystackError.message);
+          console.warn(
+            "Paystack subaccount creation failed:",
+            paystackError.message,
+          );
           // Continue without subaccount; seller can add bank details later
         }
       }
@@ -190,7 +208,7 @@ export async function register(req, res, next) {
       authMethod,
       isVerified: !email, // Phone-only users are auto-verified (no email to send to)
       emailVerificationToken: verificationToken,
-      sellerInfo: role === 'seller' ? sellerInfo : undefined,
+      sellerInfo: role === "seller" ? sellerInfo : undefined,
     });
 
     // ── Send verification email if email was provided ───────────────────
@@ -364,7 +382,7 @@ export async function refreshToken(req, res, next) {
  */
 export async function registerVendor(req, res, next) {
   // Override role to 'seller' and delegate to register
-  req.body.role = 'seller';
+  req.body.role = "seller";
   return register(req, res, next);
 }
 
@@ -396,7 +414,7 @@ export async function getBanks(req, res, next) {
 // ─────────────────────────────────────────────
 /**
  * POST /api/auth/resolve-account
- * Verifies a bank account number and returns the account holder's name.
+ * Resolves a bank account number to get the account holder's name.
  * Called live on the vendor registration form to confirm the account before submitting.
  * Public route — no auth required.
  *
@@ -404,27 +422,77 @@ export async function getBanks(req, res, next) {
  */
 export async function resolveAccount(req, res, next) {
   try {
-    const { accountNumber, bankCode, accountType } = req.body;
+    let { accountNumber, bankCode, accountType } = req.body;
 
-    if (!accountNumber || !bankCode) {
+    // ───── Validate required fields ─────
+    if (!accountNumber || typeof accountNumber !== "string") {
       return res.status(400).json({
         success: false,
-        message: "Account number and bank code are required.",
+        message: "Account number is required",
       });
     }
 
-    const result = await resolveAccountNumber(accountNumber, bankCode, accountType);
+    if (!bankCode || typeof bankCode !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Bank code is required",
+      });
+    }
 
-    res.status(200).json({
+    // ───── Clean & validate account number ─────
+    const cleanedAccount = accountNumber.replace(/\s/g, "");
+
+    if (!/^\d{10}$/.test(cleanedAccount)) {
+      return res.status(400).json({
+        success: false,
+        message: "Account number must be exactly 10 digits",
+      });
+    }
+
+    // ───── Validate bank code format (numeric, 3–6 digits typical) ─────
+    if (!/^\d{3,6}$/.test(bankCode)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid bank code format",
+      });
+    }
+
+    // ───── Call Paystack helper ─────
+    const result = await resolveAccountNumber(
+      cleanedAccount,
+      bankCode,
+      accountType,
+    );
+
+    // ───── Handle unexpected Paystack response ─────
+    if (!result || !result.account_name) {
+      return res.status(400).json({
+        success: false,
+        message: "Unable to resolve account. Please verify details.",
+      });
+    }
+
+    // ───── Success response ─────
+    return res.status(200).json({
       success: true,
-      accountName: result.account_name,
-      accountNumber: result.account_number,
+      data: {
+        accountName: result.account_name,
+        accountNumber: result.account_number,
+      },
     });
   } catch (error) {
-    // Return the actual error message from Paystack (e.g. "Account number is invalid")
+    console.error("resolveAccount error:", {
+      message: error.message,
+      stack: error.stack,
+      body: req.body,
+    });
+
     return res.status(400).json({
       success: false,
-      message: error.message || "Could not resolve account. Please check your details.",
+      message:
+        error?.response?.data?.message ||
+        error.message ||
+        "Could not resolve account. Please check your details.",
     });
   }
 }
@@ -458,7 +526,9 @@ export async function googleCallback(req, res, next) {
     await user.save({ validateBeforeSave: false });
 
     // Redirect to client with token in URL
-    res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${accessToken}`);
+    res.redirect(
+      `${process.env.CLIENT_URL}/auth/callback?token=${accessToken}`,
+    );
   } catch (error) {
     next(error);
   }
@@ -660,11 +730,18 @@ export async function forgotPassword(req, res, next) {
     await user.save({ validateBeforeSave: false });
 
     console.log("🔐 Password reset token generated for:", email);
-    console.log("🔗 Reset URL will be:", `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`);
+    console.log(
+      "🔗 Reset URL will be:",
+      `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`,
+    );
 
     // Send reset email
     try {
-      const emailResult = await sendPasswordResetEmail(user.email, user.name, resetToken);
+      const emailResult = await sendPasswordResetEmail(
+        user.email,
+        user.name,
+        resetToken,
+      );
       if (!emailResult) {
         // Email failed to send but don't reveal this to user
         console.error(" Email sending returned null");
@@ -784,10 +861,14 @@ export async function verifyResetOTP(req, res, next) {
 
     // Find user by email or phone
     let user;
-    if (identifier.includes('@')) {
-      user = await User.findOne({ email: identifier.toLowerCase() }).select('+passwordResetOTP');
+    if (identifier.includes("@")) {
+      user = await User.findOne({ email: identifier.toLowerCase() }).select(
+        "+passwordResetOTP",
+      );
     } else {
-      user = await User.findOne({ phone: identifier }).select('+passwordResetOTP');
+      user = await User.findOne({ phone: identifier }).select(
+        "+passwordResetOTP",
+      );
     }
 
     if (!user) {
@@ -806,7 +887,10 @@ export async function verifyResetOTP(req, res, next) {
     }
 
     // Check OTP expiry
-    if (!user.passwordResetOTP.expiresAt || user.passwordResetOTP.expiresAt < new Date()) {
+    if (
+      !user.passwordResetOTP.expiresAt ||
+      user.passwordResetOTP.expiresAt < new Date()
+    ) {
       user.passwordResetOTP = undefined;
       await user.save({ validateBeforeSave: false });
       return res.status(400).json({
@@ -826,7 +910,7 @@ export async function verifyResetOTP(req, res, next) {
 
     // Generate reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
-    
+
     user.passwordResetToken = resetToken;
     user.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
     user.passwordResetOTP = undefined;
@@ -971,18 +1055,25 @@ export async function resetPassword(req, res, next) {
  */
 export async function becomeSeller(req, res, next) {
   try {
-    const { storeName, businessCategory, businessAddress, bankCode, accountNumber } = req.body;
+    const {
+      storeName,
+      businessCategory,
+      businessAddress,
+      bankCode,
+      accountNumber,
+    } = req.body;
 
     // Validate required fields
     if (!storeName || !businessCategory || !businessAddress) {
       return res.status(400).json({
         success: false,
-        message: "Store name, business category, and business address are required.",
+        message:
+          "Store name, business category, and business address are required.",
       });
     }
 
     // Ensure user is a buyer
-    if (req.user.role !== 'buyer') {
+    if (req.user.role !== "buyer") {
       return res.status(400).json({
         success: false,
         message: "Only buyers can become sellers.",
@@ -1012,7 +1103,10 @@ export async function becomeSeller(req, res, next) {
     // If bank details provided, attempt to create Paystack subaccount
     if (bankCode && accountNumber) {
       try {
-        const resolvedAccount = await resolveAccountNumber(accountNumber, bankCode);
+        const resolvedAccount = await resolveAccountNumber(
+          accountNumber,
+          bankCode,
+        );
         const subaccount = await createSubaccount({
           businessName: storeName,
           bankCode,
@@ -1026,13 +1120,16 @@ export async function becomeSeller(req, res, next) {
         sellerInfo.accountNumber = accountNumber;
         sellerInfo.accountName = resolvedAccount.account_name;
       } catch (paystackError) {
-        console.warn('Paystack subaccount creation failed:', paystackError.message);
+        console.warn(
+          "Paystack subaccount creation failed:",
+          paystackError.message,
+        );
         // Continue without subaccount; seller can add bank details later
       }
     }
 
     // Update user role and sellerInfo
-    user.role = 'seller';
+    user.role = "seller";
     user.sellerInfo = sellerInfo;
     await user.save();
 
@@ -1055,7 +1152,7 @@ export async function completeOnboarding(req, res, next) {
   try {
     const user = req.user;
 
-    if (user.role !== 'seller') {
+    if (user.role !== "seller") {
       return res.status(400).json({
         success: false,
         message: "Only sellers can complete onboarding.",

@@ -67,7 +67,7 @@ const ProductSchema = new Schema(
       type: Boolean,
       default: false,
     },
-specifications: {
+    specifications: {
       type: Schema.Types.Mixed,
       default: {},
     },
@@ -93,16 +93,64 @@ specifications: {
       default: [],
       comment: "Product variants (e.g., Size: L, Color: Red)"
     },
+    ratings: {
+      type: [{
+        user: {
+          type: Schema.Types.ObjectId,
+          ref: "User",
+          required: true
+        },
+        rating: {
+          type: Number,
+          required: true,
+          min: 1,
+          max: 5
+        },
+        review: {
+          type: String,
+          maxlength: 500
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now
+        }
+      }],
+      default: [],
+    },
+    averageRating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5
+    },
+    totalReviews: {
+      type: Number,
+      default: 0
+    }
   },
   {
     timestamps: true
   }
 );
 
+// Auto-calculate average rating when ratings change
+ProductSchema.pre('save', function(next) {
+  if (this.ratings && this.ratings.length > 0) {
+    const sum = this.ratings.reduce((acc, r) => acc + r.rating, 0);
+    this.averageRating = Math.round((sum / this.ratings.length) * 10) / 10;
+    this.totalReviews = this.ratings.length;
+  } else {
+    this.averageRating = 0;
+    this.totalReviews = 0;
+  }
+  next();
+});
+
 ProductSchema.index({ category: 1 });
 ProductSchema.index({ seller: 1 });
 ProductSchema.index({ isActive: 1 });
 ProductSchema.index({ isFeatured: 1 });
 ProductSchema.index({ name: "text", description: "text" });
+ProductSchema.index({ averageRating: -1 });
 
 export default model("Product", ProductSchema);

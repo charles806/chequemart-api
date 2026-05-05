@@ -3,7 +3,17 @@ import Category from "../models/Category.model.js";
 
 export const getAllProducts = async (req, res) => {
   try {
-    const { category, seller, search, page = 1, limit = 20 } = req.query;
+    const { 
+      category, 
+      seller, 
+      search, 
+      page = 1, 
+      limit = 20,
+      sort = '-createdAt',
+      minPrice,
+      maxPrice,
+      condition 
+    } = req.query;
 
     const filter = { isActive: true };
 
@@ -15,6 +25,16 @@ export const getAllProducts = async (req, res) => {
       filter.seller = seller;
     }
 
+    if (condition) {
+      filter.condition = condition;
+    }
+
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
+    }
+
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -23,9 +43,26 @@ export const getAllProducts = async (req, res) => {
       ];
     }
 
+    // Handle sorting
+    let sortQuery = {};
+    switch (sort) {
+      case 'price_asc':
+        sortQuery = { price: 1 };
+        break;
+      case 'price_desc':
+        sortQuery = { price: -1 };
+        break;
+      case 'name':
+        sortQuery = { name: 1 };
+        break;
+      case 'newest':
+      default:
+        sortQuery = { createdAt: -1 };
+    }
+
     const products = await Product.find(filter)
       .populate("seller", "name email")
-      .sort({ createdAt: -1 })
+      .sort(sortQuery)
       .skip((page - 1) * limit)
       .limit(Number(limit));
 
@@ -53,7 +90,16 @@ export const getAllProducts = async (req, res) => {
 
 export const getProductById = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id)
+    const { id } = req.params;
+    
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    const product = await Product.findById(id)
       .populate("seller", "name email avatar");
 
     if (!product) {
@@ -101,6 +147,17 @@ export const createProduct = async (req, res) => {
   try {
     const { name, description, price, discountPrice, category, images, stock, sku, specifications, isFeatured } = req.body;
 
+    if (!name || !price || !category) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, price, and category are required",
+      });
+    }
+
+    // Auto-generate SKU if missing
+    const finalSku = sku && sku.trim() !== "" 
+      ? sku 
+      : `CHK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
     const product = await Product.create({
       name,
@@ -111,7 +168,7 @@ export const createProduct = async (req, res) => {
       images: images || [],
       condition: req.body.condition || "Brand New",
       stock: stock || 0,
-      sku: sku && sku.trim() !== "" ? sku : undefined,
+      sku: finalSku,
       seller: req.user._id,
       specifications: specifications || {},
       isFeatured: isFeatured || false,
@@ -135,7 +192,16 @@ export const createProduct = async (req, res) => {
 
 export const updateProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const { id } = req.params;
+    
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    const product = await Product.findById(id);
 
     if (!product) {
       return res.status(404).json({
@@ -153,10 +219,14 @@ export const updateProduct = async (req, res) => {
 
     const { name, description, price, discountPrice, category, images, stock, sku, specifications, isFeatured, isActive } = req.body;
 
-
+    // Auto-generate SKU if missing
+    let finalSku = sku;
+    if (!finalSku || finalSku.trim() === "") {
+      finalSku = `CHK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    }
 
     const updatedProduct = await Product.findByIdAndUpdate(
-      req.params.id,
+      id,
       {
         name,
         description,
@@ -166,7 +236,7 @@ export const updateProduct = async (req, res) => {
         images,
         condition: req.body.condition,
         stock,
-        sku: sku && sku.trim() !== "" ? sku : undefined,
+        sku: finalSku,
         specifications,
         isFeatured,
         isActive,
@@ -191,7 +261,16 @@ export const updateProduct = async (req, res) => {
 
 export const deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    const { id } = req.params;
+    
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    const product = await Product.findById(id);
 
     if (!product) {
       return res.status(404).json({
@@ -207,7 +286,7 @@ export const deleteProduct = async (req, res) => {
       });
     }
 
-    await Product.findByIdAndDelete(req.params.id);
+    await Product.findByIdAndDelete(id);
 
     res.status(200).json({
       success: true,
@@ -248,6 +327,121 @@ export const getMyProducts = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error retrieving products",
+      error: error.message,
+    });
+  }
+};
+
+export const rateProduct = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, review } = req.body;
+    const userId = req.user._id;
+
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be between 1 and 5",
+      });
+    }
+
+    const product = await Product.findById(id);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Check if user already rated
+    const existingRatingIndex = product.ratings.findIndex(
+      r => r.user.toString() === userId.toString()
+    );
+
+    const newRating = {
+      user: userId,
+      rating,
+      review: review || '',
+      createdAt: new Date()
+    };
+
+    if (existingRatingIndex > -1) {
+      // Update existing rating
+      product.ratings[existingRatingIndex] = newRating;
+    } else {
+      // Add new rating
+      product.ratings.push(newRating);
+    }
+
+    await product.save();
+
+    res.status(200).json({
+      success: true,
+      message: existingRatingIndex > -1 ? "Rating updated successfully" : "Rating added successfully",
+      data: {
+        averageRating: product.averageRating,
+        totalReviews: product.totalReviews
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error adding rating",
+      error: error.message,
+    });
+  }
+};
+
+export const getProductReviews = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required",
+      });
+    }
+
+    const product = await Product.findById(id)
+      .populate("ratings.user", "name");
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Sort by newest first
+    const reviews = product.ratings
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .map(r => ({
+        user: r.user?.name,
+        rating: r.rating,
+        review: r.review,
+        createdAt: r.createdAt
+      }));
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reviews,
+        averageRating: product.averageRating,
+        totalReviews: product.totalReviews
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error retrieving reviews",
       error: error.message,
     });
   }

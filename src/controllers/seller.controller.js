@@ -9,9 +9,12 @@ import { sendStatusNotification } from '../utils/notifications.js';
 import { createTransfer, createRecipient, resolveAccountNumber } from '../utils/paystack.utils.js';
 import { sequelize } from '../config/postgres.js';
 
+const COMMISSION_RATE = (parseFloat(process.env.COMMISSION_RATE)) / 100 || 0.03;
+
 /**
  * GET /api/seller/wallet
  * Returns the seller's current wallet balances (from PostgreSQL).
+ * Includes escrow calculation from paid but undelivered orders.
  */
 export const getWallet = async (req, res, next) => {
   try {
@@ -25,9 +28,28 @@ export const getWallet = async (req, res, next) => {
       wallet = await Wallet.create({ seller_id: sellerId });
     }
 
+    // Calculate escrow balance from orders
+    // Paid orders that are not yet delivered/collected
+    const paidUndeliveredOrders = await Order.find({
+      seller: sellerId,
+      isPaid: true,
+      status: { $nin: ['delivered', 'collected', 'cancelled'] }
+    });
+
+    const escrowBalance = paidUndeliveredOrders.reduce((sum, order) => {
+      // Get seller's share (minus commission)
+      const commission = order.totalAmount * COMMISSION_RATE;
+      return sum + (order.totalAmount - commission);
+    }, 0);
+
     res.status(200).json({
       success: true,
-      wallet
+      wallet: {
+        availableBalance: wallet.available_balance,
+        escrowBalance: escrowBalance,
+        pendingBalance: wallet.pending_balance,
+        totalEarned: wallet.total_earned
+      }
     });
   } catch (error) {
     console.error("💰 wallet error:", error.message);
@@ -177,6 +199,11 @@ export const updateOrderStatus = async (req, res, next) => {
     const { id } = req.params;
     const { status, trackingNumber, carrier, description } = req.body;
     const sellerId = req.user._id;
+
+    // Validate ID
+    if (!id || id === 'undefined' || id === 'null') {
+      return res.status(400).json({ success: false, message: "Order ID is required" });
+    }
 
     const order = await Order.findOne({ _id: id, seller: sellerId });
 

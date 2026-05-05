@@ -54,7 +54,7 @@ const orderSchema = new mongoose.Schema({
   ],
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'unpaid', 'refunded'],
+    enum: ['pending', 'paid', 'unpaid', 'refunded', 'failed'],
     default: 'pending',
   },
   shippingAddress: {
@@ -69,6 +69,8 @@ const orderSchema = new mongoose.Schema({
   },
   paymentReference: {
     type: String,
+    unique: true,
+    sparse: true,
   },
   isPaid: {
     type: Boolean,

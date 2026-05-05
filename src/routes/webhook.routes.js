@@ -6,6 +6,7 @@ import User from '../models/User.model.js';
 import { sequelize } from '../config/postgres.js';
 import Wallet from '../models/Wallet.model.js';
 import Withdrawal from '../models/Withdrawal.model.js';
+import { verifyTransaction } from '../utils/paystack.utils.js';
 
 const router = express.Router();
 
@@ -68,6 +69,40 @@ router.post('/paystack', verifyPaystackSignature, async (req, res) => {
 async function handleChargeSuccess(data) {
   const reference = data.reference;
   
+  // Skip if no reference
+  if (!reference) {
+    console.warn('charge.success: no reference provided');
+    return;
+  }
+  
+  // IDEMPOTENCY CHECK - Skip if already processed
+  const existingOrder = await Order.findOne({ paymentReference: reference });
+  if (existingOrder && existingOrder.isPaid) {
+    console.log('charge.success: order already paid, skipping:', existingOrder._id);
+    return;
+  }
+  
+  // VERIFY with Paystack - Don't trust webhook alone
+  let verifiedData = data;
+  try {
+    const verification = await verifyTransaction(reference);
+    verifiedData = verification.data;
+    
+    // Check if payment was actually successful
+    if (verification.data.status !== 'success') {
+      console.warn('charge.success: Paystack verification failed, status:', verification.data.status);
+      // Update order to failed
+      await Order.updateMany(
+        { paymentReference: reference },
+        { paymentStatus: 'failed', isPaid: false }
+      );
+      return;
+    }
+  } catch (verifyErr) {
+    console.warn('Could not verify with Paystack, using webhook data:', verifyErr.message);
+    // Continue with webhook data if verification fails - could be network issue
+  }
+  
   const orders = await Order.find({ paymentReference: reference });
   if (orders.length === 0) {
     console.warn('charge.success: orders not found for reference:', reference);
@@ -75,6 +110,7 @@ async function handleChargeSuccess(data) {
   }
 
   for (const order of orders) {
+    // IDEMPOTENCY CHECK - Double check
     if (order.isPaid) {
       console.log('charge.success: order already paid:', order._id);
       continue;
@@ -123,7 +159,7 @@ async function handleChargeSuccess(data) {
       console.error('Failed to credit seller wallet:', walletError.message);
     }
 
-    console.log('charge.success: order marked as paid:', order._id, 'Amount:', data.amount / 100);
+    console.log('charge.success: order marked as paid:', order._id, 'Amount:', verifiedData.amount / 100);
   }
 }
 

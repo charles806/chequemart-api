@@ -110,10 +110,11 @@ export const initializeTransaction = async ({ email, amount, metadata, subaccoun
 /**
  * verifyTransaction
  * Checks the status of a transaction using its reference.
+ * Returns full response for status checking.
  */
 export const verifyTransaction = async (reference) => {
   const response = await paystackRequest("GET", `/transaction/verify/${reference}`);
-  return response.data;
+  return response;
 };
 
 /**
