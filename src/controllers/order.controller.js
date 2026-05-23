@@ -368,57 +368,125 @@ export const markReceived = async (req, res, next) => {
  * @route   PATCH /api/orders/:id/status
  * @access  Private (Seller/Admin)
  */
+
 export const updateOrderStatus = async (req, res, next) => {
   try {
-    const { status, trackingNumber, carrier, description } = req.body;
-    
+    const {
+      status,
+      trackingNumber,
+      carrier,
+      description,
+    } = req.body;
+
+    const allowedStatuses = [
+      "pending",
+      "processing",
+      "confirmed",
+      "shipped",
+      "delivered",
+      "cancelled",
+    ];
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        message: "Status is required",
+      });
+    }
+
+    if (!allowedStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status value",
+      });
+    }
+
     const order = await Order.findById(req.params.id);
 
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
     }
 
-    const isSeller = order.seller.toString() === req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
+    const isSeller =
+      order.seller.toString() === req.user._id.toString();
+
+    const isAdmin = req.user.role === "admin";
 
     if (!isSeller && !isAdmin) {
-      return res.status(403).json({ success: false, message: "Not authorized" });
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
     }
 
-    const role = isAdmin ? 'admin' : 'seller';
-    const { valid, message } = validateTransition(order.status, status, role);
+    const role = isAdmin ? "admin" : "seller";
+
+    const { valid, message } = validateTransition(
+      order.status,
+      status,
+      role
+    );
+
     if (!valid) {
-      return res.status(400).json({ success: false, message });
+      return res.status(400).json({
+        success: false,
+        message,
+      });
     }
 
-    // Special check for shipping: must be paid
-    if (status === 'shipped' && !order.isPaid) {
-      return res.status(400).json({ success: false, message: "Cannot ship unpaid order" });
+    if (status === "shipped" && !order.isPaid) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot ship unpaid order",
+      });
     }
 
     const previousStatus = order.status;
+
     order.status = status;
-    
-    if (trackingNumber) order.trackingNumber = trackingNumber;
-    if (carrier) order.carrier = carrier;
-    
+
+    if (trackingNumber) {
+      order.trackingNumber = trackingNumber;
+    }
+
+    if (carrier) {
+      order.carrier = carrier;
+    }
+
     order.trackingHistory.push({
       status,
-      description: description || `Order status updated to ${status} by ${role}`,
-      updatedBy: req.user._id
+      description:
+        description ||
+        `Order updated to ${status}`,
+      updatedBy: req.user._id,
     });
 
     await order.save();
 
-    await sendStatusNotification(order, previousStatus);
+    await sendStatusNotification(
+      order,
+      previousStatus
+    );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: `Order status updated to ${status}`,
-      order
+      message: `Order updated to ${status}`,
+      order,
     });
   } catch (error) {
-    next(error);
+    console.error("[UPDATE ORDER STATUS ERROR]", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update order status",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined,
+    });
   }
 };
 
