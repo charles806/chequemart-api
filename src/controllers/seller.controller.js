@@ -9,7 +9,7 @@ import { sendStatusNotification } from '../utils/notifications.js';
 import { createTransfer, createRecipient, resolveAccountNumber } from '../utils/paystack.utils.js';
 import { sequelize } from '../config/postgres.js';
 
-const COMMISSION_RATE = (parseFloat(process.env.COMMISSION_RATE)) / 100 || 0.03;
+const getCommissionRate = (orderAmount) => orderAmount >= 50000 ? 0.10 : 0.05;
 
 /**
  * GET /api/seller/wallet
@@ -28,6 +28,24 @@ export const getWallet = async (req, res, next) => {
       wallet = await Wallet.create({ seller_id: sellerId });
     }
 
+    // Self-heal corrupted NaN values in Postgres
+    let needsSave = false;
+    if (isNaN(parseFloat(wallet.available_balance))) {
+      wallet.available_balance = 0;
+      needsSave = true;
+    }
+    if (isNaN(parseFloat(wallet.pending_balance))) {
+      wallet.pending_balance = 0;
+      needsSave = true;
+    }
+    if (isNaN(parseFloat(wallet.total_earned))) {
+      wallet.total_earned = 0;
+      needsSave = true;
+    }
+    if (needsSave) {
+      await wallet.save();
+    }
+
     // Calculate escrow balance from orders
     // Paid orders that are not yet delivered/collected
     const paidUndeliveredOrders = await Order.find({
@@ -38,17 +56,17 @@ export const getWallet = async (req, res, next) => {
 
     const escrowBalance = paidUndeliveredOrders.reduce((sum, order) => {
       // Get seller's share (minus commission)
-      const commission = order.totalAmount * COMMISSION_RATE;
+      const commission = order.totalAmount * getCommissionRate(order.totalAmount);
       return sum + (order.totalAmount - commission);
     }, 0);
 
     res.status(200).json({
       success: true,
       wallet: {
-        availableBalance: wallet.available_balance,
-        escrowBalance: escrowBalance,
-        pendingBalance: wallet.pending_balance,
-        totalEarned: wallet.total_earned
+        availableBalance: wallet.available_balance || 0,
+        escrowBalance: escrowBalance || 0,
+        pendingBalance: wallet.pending_balance || 0,
+        totalEarned: wallet.total_earned || 0
       }
     });
   } catch (error) {
