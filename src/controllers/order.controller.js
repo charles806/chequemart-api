@@ -8,7 +8,13 @@ import { initializeTransaction, createBulkSplit, listSplits } from '../utils/pay
 import { validateTransition } from '../utils/statusTransitions.js';
 import { sendStatusNotification } from '../utils/notifications.js';
 
-const COMMISSION_RATE = (parseFloat(process.env.COMMISSION_RATE)) / 100;
+// Dynamic tiered commission per PRD Section 4.1:
+// Orders below ₦50,000 → 5% commission
+// Orders ₦50,000 and above → 10% commission
+const getCommissionRate = (orderAmount) => orderAmount >= 50000 ? 0.10 : 0.05;
+
+// Flat fallback rate for Paystack split calculations where per-order tiering isn't possible
+const COMMISSION_RATE = (parseFloat(process.env.COMMISSION_RATE)) / 100 || 0.05;
 
 /**
  * @desc    Create new orders from cart items
@@ -93,7 +99,7 @@ export const createOrder = async (req, res, next) => {
       const order = await Order.create(orderData);
       
       // 2. 🛡️ Create Escrow record in PostgreSQL
-      const commissionRate = COMMISSION_RATE;
+      const commissionRate = getCommissionRate(order.totalAmount);
       const commission = order.totalAmount * commissionRate;
       const sellerAmount = order.totalAmount - commission;
 
@@ -453,7 +459,7 @@ export const initializePayment = async (req, res, next) => {
           // Calculate what percentage goes to this seller
           const sellerOrders = orders.filter(o => o.seller.toString() === sellerId);
           const sellerTotal = sellerOrders.reduce((sum, o) => sum + o.totalAmount, 0);
-          const sellerShare = sellerTotal * (1 - COMMISSION_RATE);
+          const sellerShare = sellerTotal * (1 - getCommissionRate(sellerTotal));
           
           // Calculate percentage share (e.g., 8000 = 80% in Paystack's base)
           const sharePercent = Math.round((sellerShare / totalAmount) * 10000);
@@ -514,7 +520,7 @@ export const initializePayment = async (req, res, next) => {
       const seller = await User.findById(uniqueSellers[0]);
       if (seller?.sellerInfo?.paystackSubaccountCode) {
         subaccount = seller.sellerInfo.paystackSubaccountCode;
-        transaction_charge = Math.round(amountInKobo * COMMISSION_RATE);
+        transaction_charge = Math.round(amountInKobo * getCommissionRate(totalAmount));
       }
     }
 

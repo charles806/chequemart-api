@@ -25,7 +25,7 @@ export const ALLOWED_TRANSITIONS = {
   processing: {
     next: ['confirmed', 'cancelled'],
     roles: {
-      confirmed: ['admin'],
+      confirmed: ['admin', 'seller'],
       cancelled: ['admin', 'seller']
     }
   },
