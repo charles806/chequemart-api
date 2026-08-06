@@ -152,5 +152,7 @@ ProductSchema.index({ isActive: 1 });
 ProductSchema.index({ isFeatured: 1 });
 ProductSchema.index({ name: "text", description: "text" });
 ProductSchema.index({ averageRating: -1 });
+ProductSchema.index({ seller: 1, isActive: 1, createdAt: -1 });
+ProductSchema.index({ createdAt: -1 });
 
 export default model("Product", ProductSchema);

@@ -14,7 +14,7 @@ const Withdrawal = sequelize.define("Withdrawal", {
     comment: "MongoDB ObjectId of the Seller",
   },
   amount: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   paystack_transfer_id: {
@@ -28,6 +28,10 @@ const Withdrawal = sequelize.define("Withdrawal", {
   },
 }, {
   tableName: "withdrawals",
+  indexes: [
+    { fields: ['seller_id'] },
+    { fields: ['status'] },
+  ],
   timestamps: true,
   createdAt: "created_at",
   updatedAt: false // PRD specifies created_at only

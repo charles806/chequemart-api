@@ -11,10 +11,12 @@ import {
   deleteBankAccount,
   getEscrowSummary,
   getSellerEscrows,
+  releaseEscrow,
   requestWithdrawal,
   getWithdrawals
 } from '../controllers/seller.controller.js';
 import { protect, restrictTo } from '../middleware/auth.middleware.js';
+import { requestWithdrawalValidation, validate } from '../middleware/validation.middleware.js';
 
 const router = Router();
 
@@ -33,7 +35,8 @@ router.get('/analytics/summary', getDashboardSummary);
 router.get('/analytics/revenue', getRevenueAnalytics);
 router.get('/orders', getSellerOrders);
 router.put('/orders/:id/status', updateOrderStatus);
-router.post('/withdraw', requestWithdrawal);
+router.post('/orders/:id/release-escrow', releaseEscrow);
+router.post('/withdraw', requestWithdrawalValidation, validate, requestWithdrawal);
 router.get('/withdrawals', getWithdrawals);
 
 export default router;

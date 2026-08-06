@@ -1,7 +1,7 @@
 import { Router } from "express";
 const router = Router();
 
-import { register, registerVendor, login, logout, refreshToken, verifyEmail, forgotPassword, forgotPasswordOTP, verifyResetOTP, resetPasswordOTP, resetPassword, getMe, getBanks, resolveAccount, becomeSeller, completeOnboarding, googleCallback } from "../controllers/auth.controller.js";
+import { register, registerVendor, login, logout, refreshToken, verifyEmail, forgotPassword, forgotPasswordOTP, verifyResetOTP, resetPasswordOTP, resetPassword, getMe, getBanks, resolveAccount, becomeSeller, completeOnboarding, revokeSessions, googleCallback } from "../controllers/auth.controller.js";
 
 import { protect } from "../middleware/auth.middleware.js";
 import { 
@@ -27,6 +27,7 @@ router.post("/login", loginValidation, validate, login);
 
 //  Token Management ─
 router.post("/logout", protect, logout);
+router.post("/revoke-sessions", protect, revokeSessions);
 router.post("/refresh-token", refreshToken);
 
 //  Email Verification 

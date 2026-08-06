@@ -1,6 +1,7 @@
 import pkg from "sequelize";
 const { DataTypes } = pkg;
 import { sequelize } from "../config/postgres.js";
+import { validateEscrowTransition } from "../utils/escrowTransitions.js";
 
 const Escrow = sequelize.define("Escrow", {
   id: {
@@ -24,19 +25,19 @@ const Escrow = sequelize.define("Escrow", {
     comment: "MongoDB ObjectId of the Seller",
   },
   amount: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   commission: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   seller_amount: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   status: {
-    type: DataTypes.ENUM("HELD", "RELEASED", "REFUNDED"),
+    type: DataTypes.ENUM("HELD", "RELEASED", "REFUNDED", "DISPUTED", "AUTO_RELEASED", "EXPIRED"),
     defaultValue: "HELD",
     allowNull: false,
   },
@@ -46,9 +47,26 @@ const Escrow = sequelize.define("Escrow", {
   },
 }, {
   tableName: "escrow",
+  indexes: [
+    { fields: ['order_id'] },
+    { fields: ['seller_id'] },
+    { fields: ['status'] },
+  ],
   timestamps: true,
   createdAt: "created_at",
-  updatedAt: "updated_at"
+  updatedAt: "updated_at",
+  hooks: {
+    beforeUpdate: (escrow, options) => {
+      if (escrow.changed("status")) {
+        const previousStatus = escrow._previousDataValues.status;
+        const newStatus = escrow.status;
+        const { valid, message } = validateEscrowTransition(previousStatus, newStatus);
+        if (!valid) {
+          throw new Error(message);
+        }
+      }
+    },
+  },
 });
 
 export default Escrow;

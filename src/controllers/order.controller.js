@@ -4,9 +4,10 @@ import Escrow from '../models/Escrow.model.js';
 import User from '../models/User.model.js';
 import { sequelize } from '../config/postgres.js';
 import Wallet from '../models/Wallet.model.js';
-import { initializeTransaction, createBulkSplit, listSplits } from '../utils/paystack.utils.js';
+import { initializeTransaction, createBulkSplit, listSplits, verifyTransaction } from '../utils/paystack.utils.js';
 import { validateTransition } from '../utils/statusTransitions.js';
 import { sendStatusNotification } from '../utils/notifications.js';
+import { paginate, buildPaginationMetadata } from '../utils/paginate.js';
 
 // Dynamic tiered commission per PRD Section 4.1:
 // Orders below ₦50,000 → 5% commission
@@ -143,13 +144,19 @@ export const createOrder = async (req, res, next) => {
  */
 export const getMyOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ buyer: req.user._id })
-      .sort({ createdAt: -1 })
-      .populate('seller', 'name storeName');
+    const { page, limit, sortBy = '-createdAt', sortOrder } = req.query;
+    const { query, page: safePage, limit: safeLimit } = paginate(
+      Order.find({ buyer: req.user._id }).sort({ createdAt: -1 }).populate('seller', 'name storeName'),
+      { page, limit }
+    );
+
+    const orders = await query;
+    const total = await Order.countDocuments({ buyer: req.user._id });
 
     res.status(200).json({
       success: true,
-      orders
+      orders,
+      pagination: buildPaginationMetadata(total, safePage, safeLimit),
     });
   } catch (error) {
     next(error);
@@ -229,6 +236,36 @@ export const cancelOrder = async (req, res, next) => {
       await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity } });
     }
 
+    // Refund escrow if order was paid
+    if (order.isPaid) {
+      try {
+        const escrow = await Escrow.findOne({ where: { order_id: order._id.toString() } });
+        if (escrow && escrow.status === 'HELD') {
+          escrow.status = 'REFUNDED';
+          await escrow.save();
+
+          const { default: EscrowEvent } = await import('../models/EscrowEvent.model.js');
+          await EscrowEvent.create({
+            escrow_id: escrow.id,
+            event_type: 'REFUNDED',
+            triggered_by: req.user._id.toString(),
+            metadata: { order_id: order._id.toString(), reason: `Order cancelled by ${role}` },
+          }).catch(() => {});
+
+          // Deduct from seller's pending balance
+          await sequelize.transaction(async (t) => {
+            const wallet = await Wallet.findOne({ where: { seller_id: order.seller.toString() }, transaction: t });
+            if (wallet) {
+              wallet.pending_balance = Math.max(0, parseFloat(wallet.pending_balance) - parseFloat(escrow.seller_amount));
+              await wallet.save({ transaction: t });
+            }
+          });
+        }
+      } catch (escrowError) {
+        console.error('[cancelOrder] Failed to refund escrow:', escrowError.message);
+      }
+    }
+
     await sendStatusNotification(order, previousStatus);
 
     res.status(200).json({
@@ -285,11 +322,11 @@ export const confirmOrder = async (req, res, next) => {
 };
 
 /**
- * @desc    Mark as Received (Buyer confirms receipt: shipped -> delivered)
- * @route   PATCH /api/orders/:id/receive
+ * @desc    Mark as Collected (Buyer confirms collection: delivered -> collected)
+ * @route   PATCH /api/orders/:id/collect
  * @access  Private (Buyer)
  */
-export const markReceived = async (req, res, next) => {
+export const markCollected = async (req, res, next) => {
   try {
     const order = await Order.findOne({ _id: req.params.id, buyer: req.user._id });
 
@@ -297,66 +334,85 @@ export const markReceived = async (req, res, next) => {
       return res.status(404).json({ success: false, message: "Order not found or not owned by you" });
     }
 
-    const { valid, message } = validateTransition(order.status, 'delivered', 'buyer');
-    if (!valid) {
-      return res.status(400).json({ success: false, message });
+    // Allow retry: if already collected but escrow still held, skip transition check
+    const needsStatusUpdate = order.status !== 'collected';
+    if (needsStatusUpdate) {
+      const { valid, message } = validateTransition(order.status, 'collected', 'buyer');
+      if (!valid) {
+        return res.status(400).json({ success: false, message });
+      }
     }
 
     const previousStatus = order.status;
-    order.status = 'delivered';
-    order.trackingHistory.push({
-      status: 'delivered',
-      description: 'Order marked as received by buyer',
-      updatedBy: req.user._id
-    });
-    
-    // Automatically set to collected for seller logic
-    // In some flows, 'collected' might be a separate step or just the seller's view of 'delivered'
-    // Requirement says: Buyer status -> Delivered, Seller status -> Collected
-    
-    await order.save();
+    const sellerId = order.seller.toString();
 
-    // Release escrow funds to seller's available balance in Postgres
-    // This moves fund from HELD -> RELEASED and updates wallet
-    try {
-      const sellerId = order.seller.toString();
-      
-      // Find escrow record for this order
-      const escrow = await Escrow.findOne({ where: { order_id: order._id.toString() } });
-      if (escrow && escrow.status === 'HELD') {
-        // Update escrow status to RELEASED
-        escrow.status = 'RELEASED';
-        await escrow.save();
-
-        // Update seller's wallet: pending -> available
-        // Use transaction for atomicity
-        await sequelize.transaction(async (t) => {
-          const wallet = await Wallet.findOne({ where: { seller_id: sellerId }, transaction: t });
-          
-          if (wallet) {
-            const sellerAmount = parseFloat(escrow.seller_amount);
-            
-            // Move from pending to available
-            wallet.pending_balance = Math.max(0, parseFloat(wallet.pending_balance) - sellerAmount);
-            wallet.available_balance = parseFloat(wallet.available_balance) + sellerAmount;
-            wallet.total_earned = parseFloat(wallet.total_earned) + sellerAmount;
-            
-            await wallet.save({ transaction: t });
-            console.log(`[Wallet] Released ${sellerAmount} to seller ${sellerId} available balance`);
-          }
-        });
-      }
-    } catch (walletError) {
-      // Log error but don't fail the request - order delivery is confirmed
-      console.error('Failed to release escrow funds:', walletError.message);
+    // 1. Find or create escrow record (handles orders that predate escrow system)
+    let escrow = await Escrow.findOne({ where: { order_id: order._id.toString() } });
+    if (!escrow) {
+      const commissionRate = getCommissionRate(order.totalAmount);
+      const commission = order.totalAmount * commissionRate;
+      escrow = await Escrow.create({
+        order_id: order._id.toString(),
+        buyer_id: order.buyer.toString(),
+        seller_id: sellerId,
+        amount: order.totalAmount,
+        commission,
+        seller_amount: order.totalAmount - commission,
+        status: 'HELD',
+      });
     }
 
-    await sendStatusNotification(order, previousStatus);
+    if (escrow.status !== 'HELD') {
+      return res.status(400).json({
+        success: false,
+        message: `Escrow already ${escrow.status.toLowerCase()} for this order`,
+      });
+    }
+
+    // 2. Release escrow + update wallet (atomic transaction)
+    await sequelize.transaction(async (t) => {
+      escrow.status = 'RELEASED';
+      await escrow.save({ transaction: t });
+
+      const wallet = await Wallet.findOne({ where: { seller_id: sellerId }, transaction: t });
+      if (wallet) {
+        const sellerAmount = parseFloat(escrow.seller_amount);
+        wallet.pending_balance = Math.max(0, parseFloat(wallet.pending_balance) - sellerAmount);
+        wallet.available_balance = parseFloat(wallet.available_balance) + sellerAmount;
+        wallet.total_earned = parseFloat(wallet.total_earned) + sellerAmount;
+        await wallet.save({ transaction: t });
+      }
+    });
+
+    // 3. Log event (non-critical)
+    try {
+      const { default: EscrowEvent } = await import('../models/EscrowEvent.model.js');
+      await EscrowEvent.create({
+        escrow_id: escrow.id,
+        event_type: 'RELEASED',
+        triggered_by: req.user._id.toString(),
+        metadata: { order_id: order._id.toString(), amount: escrow.seller_amount },
+      });
+    } catch (err) {
+      console.error('[markCollected] Failed to create EscrowEvent:', err.message);
+    }
+
+    // 4. Update order status (only after funds released successfully)
+    if (needsStatusUpdate) {
+      order.status = 'collected';
+      order.trackingHistory.push({
+        status: 'collected',
+        description: 'Order collected by buyer',
+        updatedBy: req.user._id,
+      });
+      await order.save();
+      await sendStatusNotification(order, previousStatus);
+    }
 
     res.status(200).json({
       success: true,
-      message: "Order marked as received",
-      order
+      message: "Order marked as collected. Escrow funds released.",
+      order,
     });
   } catch (error) {
     next(error);
@@ -622,6 +678,74 @@ export const initializePayment = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Payment Initialization Error:", error.message);
+    next(error);
+  }
+};
+
+/**
+ * @desc    Verify payment after Paystack redirect and mark orders as paid
+ * @route   GET /api/orders/verify/:reference
+ * @access  Private (Buyer)
+ */
+export const verifyPayment = async (req, res, next) => {
+  try {
+    const { reference } = req.params;
+
+    if (!reference) {
+      return res.status(400).json({ success: false, message: "Reference is required" });
+    }
+
+    const orders = await Order.find({ paymentReference: reference, buyer: req.user._id });
+
+    if (orders.length === 0) {
+      return res.status(404).json({ success: false, message: "No orders found for this reference" });
+    }
+
+    // Check if already paid
+    if (orders.every(o => o.isPaid)) {
+      return res.json({ success: true, message: "Already paid", alreadyPaid: true });
+    }
+
+    // Verify with Paystack
+    const verification = await verifyTransaction(reference);
+
+    if (!verification || verification.data?.status !== 'success') {
+      return res.status(400).json({
+        success: false,
+        message: verification?.data?.gateway_response || "Payment verification failed with Paystack",
+      });
+    }
+
+    // Mark all orders as paid
+    const updatedOrders = [];
+    for (const order of orders) {
+      if (order.isPaid) continue;
+
+      order.isPaid = true;
+      order.paymentStatus = 'paid';
+      order.status = 'processing';
+      order.paidAt = new Date();
+      await order.save();
+
+      // Update escrow
+      try {
+        await Escrow.update(
+          { status: 'HELD', paystack_reference: reference },
+          { where: { order_id: order._id.toString() } }
+        );
+      } catch (escrowErr) {
+        console.error(`[verifyPayment] Escrow update failed for order ${order._id}:`, escrowErr.message);
+      }
+
+      updatedOrders.push(order);
+    }
+
+    res.json({
+      success: true,
+      message: `Payment verified. ${updatedOrders.length} order(s) marked as paid.`,
+      orders: updatedOrders,
+    });
+  } catch (error) {
     next(error);
   }
 };

@@ -14,17 +14,17 @@ const Wallet = sequelize.define("Wallet", {
     comment: "MongoDB ObjectId of the Seller",
   },
   available_balance: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0.00,
     allowNull: false,
   },
   pending_balance: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0.00,
     allowNull: false,
   },
   total_earned: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     defaultValue: 0.00,
     allowNull: false,
   },

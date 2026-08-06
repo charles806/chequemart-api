@@ -69,14 +69,31 @@ export const sendStatusNotification = async (order, previousStatus) => {
         break;
         
       case 'delivered':
-        if (sellerUser?.email) {
+        if (buyerUser?.email) {
           await sendEmail({
-            to: sellerUser.email,
-            subject: `💰 Order Delivered - Funds Released - Order #${_id}`,
+            to: buyerUser.email,
+            subject: `📦 Order Delivered - Order #${_id}`,
             html: `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
                 <h2 style="color: #333;">Order Delivered!</h2>
-                <p>The buyer has confirmed receipt of the order.</p>
+                <p>Your order has been marked as delivered.</p>
+                <p><strong>Order ID:</strong> ${_id}</p>
+                <p>Please log in and confirm collection to release funds to the seller.</p>
+              </div>
+            `
+          });
+        }
+        break;
+
+      case 'collected':
+        if (sellerUser?.email) {
+          await sendEmail({
+            to: sellerUser.email,
+            subject: `💰 Order Collected - Funds Released - Order #${_id}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+                <h2 style="color: #333;">Order Collected!</h2>
+                <p>The buyer has confirmed collection of the order.</p>
                 <p><strong>Order ID:</strong> ${_id}</p>
                 <p><strong>Amount released:</strong> ₦${order.sellerAmount}</p>
                 <p>Funds have been released to your wallet.</p>

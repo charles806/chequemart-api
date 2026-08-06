@@ -39,13 +39,13 @@ export const ALLOWED_TRANSITIONS = {
   shipped: {
     next: ['delivered'],
     roles: {
-      delivered: ['buyer', 'admin']
+      delivered: ['seller', 'admin']
     }
   },
   delivered: {
     next: ['collected'],
     roles: {
-      collected: ['seller', 'system']
+      collected: ['buyer', 'system']
     }
   },
   collected: {

@@ -11,4 +11,11 @@
       "source": "/(.*)",
       "destination": "server.js"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/release-escrow",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }

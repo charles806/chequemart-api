@@ -1,4 +1,5 @@
 import { body, param, query, validationResult } from "express-validator";
+import { sanitizeObject } from '../utils/sanitize.js';
 
 /**
  * ───────────────────────────────────────────────────────────────
@@ -20,6 +21,13 @@ export const validate = (req, res, next) => {
         message: err.msg,
       })),
     });
+  }
+  next();
+};
+
+export const sanitizeInput = (fields = []) => (req, res, next) => {
+  if (req.body && fields.length > 0) {
+    req.body = sanitizeObject(req.body, fields);
   }
   next();
 };
@@ -215,4 +223,39 @@ export const verifyEmailValidation = [
     .withMessage("Token is required")
     .isLength({ min: 64, max: 64 })
     .withMessage("Invalid token format"),
+];
+
+// ───────────────────────────────────────────────────────────────
+// Order Validation Rules
+// ───────────────────────────────────────────────────────────────
+export const createOrderValidation = [
+  body("items").isArray({ min: 1 }).withMessage("At least one item is required"),
+  body("items.*.productId").isMongoId().withMessage("Invalid product ID"),
+  body("items.*.quantity").isInt({ min: 1 }).withMessage("Quantity must be a positive integer"),
+  body("shippingAddress.fullName").optional().trim().notEmpty().isLength({ max: 100 }).escape(),
+  body("shippingAddress.phone").optional().trim().notEmpty().matches(/^\+?[0-9]\d{6,14}$/),
+  body("shippingAddress.address").optional().trim().notEmpty().isLength({ max: 500 }).escape(),
+  body("shippingAddress.city").optional().trim().notEmpty().isLength({ max: 100 }).escape(),
+  body("shippingAddress.state").optional().trim().notEmpty().isLength({ max: 100 }).escape(),
+];
+
+// ───────────────────────────────────────────────────────────────
+// Withdrawal Validation Rules
+// ───────────────────────────────────────────────────────────────
+export const requestWithdrawalValidation = [
+  body("amount").isFloat({ min: 100 }).withMessage("Minimum withdrawal is ₦100"),
+  body("bankDetailId").isUUID().withMessage("Invalid bank account"),
+];
+
+// ───────────────────────────────────────────────────────────────
+// Product Validation Rules
+// ───────────────────────────────────────────────────────────────
+export const createProductValidation = [
+  body("name").trim().notEmpty().withMessage("Product name is required").isLength({ max: 100 }).escape(),
+  body("description").trim().notEmpty().withMessage("Description is required").isLength({ max: 2000 }).escape(),
+  body("price").isFloat({ min: 0 }).withMessage("Price must be a positive number"),
+  body("category").trim().notEmpty().withMessage("Category is required"),
+  body("stock").optional().isInt({ min: 0 }).withMessage("Stock cannot be negative"),
+  body("condition").optional().isIn(["Brand New", "Like New", "Fairly Used", "Refurbished"]),
+  body("deliveryFee").optional().isFloat({ min: 0 }),
 ];

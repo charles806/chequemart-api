@@ -1,4 +1,5 @@
 import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 import User from "../models/User.model.js";
 
 import {
@@ -41,7 +42,7 @@ import {
  * @param {object} res     - Express response object
  */
 const issueTokensAndRespond = async (user, status, res) => {
-  const payload = { id: user._id, role: user.role };
+  const payload = { id: user._id, role: user.role, tokenVersion: user.tokenVersion };
 
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
@@ -70,7 +71,7 @@ const issueTokensAndRespond = async (user, status, res) => {
  * Vendors must use POST /api/auth/register/vendor (includes Paystack subaccount).
  *
  * Body: { name, email?, phone?, password }
- * At least one of email or phone is required.
+ * Both email and phone are required.
  */
 export async function register(req, res, next) {
   try {
@@ -99,7 +100,7 @@ export async function register(req, res, next) {
     if (!email && !phone) {
       return res.status(400).json({
         success: false,
-        message: "Either email or phone number is required.",
+        message: "Both email or phone number is required.",
       });
     }
 
@@ -261,10 +262,25 @@ export async function login(req, res, next) {
       : { phone: identifier };
 
     // Find user and explicitly select password (hidden by default via select: false)
-    const user = await User.findOne(query).select("+password");
+    const user = await User.findOne(query).select("+password +failedLoginAttempts +lockedUntil");
+
+    // Check if account is locked due to too many failed attempts
+    if (user && user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(429).json({
+        success: false,
+        message: "Too many login attempts. Please try again later.",
+      });
+    }
 
     // Generic message prevents email/phone enumeration attacks
     if (!user || !(await user.matchPassword(password))) {
+      if (user) {
+        user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+        if (user.failedLoginAttempts >= 5) {
+          user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+        }
+        await user.save({ validateBeforeSave: false });
+      }
       return res.status(401).json({
         success: false,
         message: "Invalid credentials.",
@@ -284,6 +300,10 @@ export async function login(req, res, next) {
       // Optional: enforce verification by returning 403 instead
       console.warn(`⚠️ Unverified user logging in: ${user.email}`);
     }
+
+    // Reset lockout fields on successful login
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
 
     await issueTokensAndRespond(user, 200, res);
   } catch (error) {
@@ -557,11 +577,11 @@ export async function sendPhoneOTP(req, res, next) {
 
     // Generate OTP
     const otp = generateOTP();
-    const hashedOtp = hashOTP(otp);
+    const hashedOtp = await hashOTP(otp);
     const expiresAt = getOTPExpiry();
 
     // Upsert user: create if not exists, update OTP if exists
-    await findOneAndUpdate(
+    await User.findOneAndUpdate(
       { phone },
       {
         phone,
@@ -572,7 +592,7 @@ export async function sendPhoneOTP(req, res, next) {
     );
 
     // Send OTP via SMS
-    sendOTPviaSMS(phone, otp);
+    await sendOTPviaSMS(phone, otp);
 
     res.status(200).json({
       success: true,
@@ -624,7 +644,7 @@ export async function verifyPhoneOTP(req, res, next) {
     }
 
     // Verify OTP
-    const isValid = verifyOTP(otp, user.otp.code);
+    const isValid = await verifyOTP(otp, user.otp.code);
     if (!isValid) {
       return res.status(400).json({
         success: false,
@@ -764,7 +784,7 @@ export async function forgotPassword(req, res, next) {
       message: "If this email is registered, a reset link has been sent.",
     });
   } catch (error) {
-    console.error("❌ Forgot password error:", error);
+    console.error("Forgot password error:", error);
     next(error);
   }
 }
@@ -808,7 +828,7 @@ export async function forgotPasswordOTP(req, res, next) {
 
     // Generate OTP
     const otp = generateOTP();
-    const hashedOtp = hashOTP(otp);
+    const hashedOtp = await hashOTP(otp);
     const expiresAt = getOTPExpiry();
 
     user.passwordResetOTP = { code: hashedOtp, expiresAt };
@@ -823,7 +843,7 @@ export async function forgotPasswordOTP(req, res, next) {
       }
     } else {
       try {
-        sendOTPviaSMS(phone, otp);
+        await sendOTPviaSMS(phone, otp);
       } catch (smsError) {
         console.error("Failed to send SMS:", smsError.message);
       }
@@ -863,11 +883,11 @@ export async function verifyResetOTP(req, res, next) {
     let user;
     if (identifier.includes("@")) {
       user = await User.findOne({ email: identifier.toLowerCase() }).select(
-        "+passwordResetOTP",
+        "+passwordResetOTP.code +passwordResetOTP.expiresAt",
       );
     } else {
       user = await User.findOne({ phone: identifier }).select(
-        "+passwordResetOTP",
+        "+passwordResetOTP.code +passwordResetOTP.expiresAt",
       );
     }
 
@@ -909,7 +929,7 @@ export async function verifyResetOTP(req, res, next) {
     }
 
     // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetToken = randomBytes(32).toString("hex");
 
     user.passwordResetToken = resetToken;
     user.passwordResetExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
@@ -951,7 +971,7 @@ export async function resetPasswordOTP(req, res, next) {
     const user = await User.findOne({
       passwordResetToken: resetToken,
       passwordResetExpiresAt: { $gt: new Date() },
-    });
+    }).select("+password");
 
     if (!user) {
       return res.status(400).json({
@@ -969,8 +989,8 @@ export async function resetPasswordOTP(req, res, next) {
       });
     }
 
-    // Update password
-    user.password = await bcrypt.hash(password, 12);
+    // Update password (pre-save hook will hash it)
+    user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpiresAt = undefined;
     await user.save();
@@ -1145,8 +1165,8 @@ export async function becomeSeller(req, res, next) {
 // ─────────────────────────────────────────────
 /**
  * POST /api/auth/complete-onboarding
- * Marks seller onboarding as complete.
- * Called after seller finishes the onboarding flow.
+ * Accepts all onboarding fields, validates them, and saves to sellerInfo.
+ * Body: { personal, store, bank, media? }
  */
 export async function completeOnboarding(req, res, next) {
   try {
@@ -1159,20 +1179,94 @@ export async function completeOnboarding(req, res, next) {
       });
     }
 
-    if (!user.sellerInfo) {
+    const { personal, store, bank, media } = req.body;
+
+    // ── Validate required fields ──────────────────────────
+    const missing = [];
+    if (!store?.storeName?.trim()) missing.push("store.storeName");
+    if (!store?.category?.trim()) missing.push("store.category");
+    if (!store?.location?.trim()) missing.push("store.location");
+    if (!store?.description?.trim()) missing.push("store.description");
+    if (!bank?.bankCode?.trim()) missing.push("bank.bankCode");
+    if (!bank?.accountNumber?.trim()) missing.push("bank.accountNumber");
+    if (!bank?.accountName?.trim()) missing.push("bank.accountName");
+
+    if (missing.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "Seller info not found.",
+        message: `Missing required fields: ${missing.join(", ")}`,
       });
     }
 
-    user.sellerInfo.onboardingComplete = true;
-    await user.save({ validateBeforeSave: false });
+    // ── Update user-level fields ──────────────────────────
+    if (personal) {
+      const firstName = personal.firstName?.trim() || "";
+      const lastName = personal.lastName?.trim() || "";
+      if (firstName || lastName) user.name = `${firstName} ${lastName}`.trim();
+      if (personal.email?.trim()) user.email = personal.email.trim();
+      if (personal.phone?.trim()) user.phone = personal.phone.trim();
+    }
+
+    // ── Build sellerInfo (merge with existing data) ───────
+    const sellerInfo = user.sellerInfo || {};
+
+    sellerInfo.storeName = store.storeName.trim();
+    sellerInfo.businessCategory = store.category.trim();
+    sellerInfo.description = store.description.trim();
+    sellerInfo.location = store.location.trim();
+    sellerInfo.businessAddress = store.location.trim();
+
+    sellerInfo.bankCode = bank.bankCode.trim();
+    sellerInfo.bankName = bank.bankName?.trim() || sellerInfo.bankName || "";
+    sellerInfo.accountNumber = bank.accountNumber.trim();
+    sellerInfo.accountName = bank.accountName.trim();
+
+    // Media — Cloudinary URLs
+    if (media) {
+      if (media.logo) sellerInfo.logo = media.logo;
+      if (media.banner) sellerInfo.banner = media.banner;
+    }
+
+    // Social links (optional)
+    if (store.socialLinks) {
+      sellerInfo.socialLinks = {
+        ...(sellerInfo.socialLinks || {}),
+        ...store.socialLinks,
+      };
+    }
+
+    // ── Mark complete and save ────────────────────────────
+    sellerInfo.onboardingComplete = true;
+    user.sellerInfo = sellerInfo;
+    user.markModified('sellerInfo');
+    await user.save();
 
     res.status(200).json({
       success: true,
       message: "Onboarding completed successfully.",
       user: user.toPublicProfile(),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  REVOKE ALL SESSIONS
+// ─────────────────────────────────────────────
+/**
+ * POST /api/auth/revoke-sessions
+ * Increments tokenVersion to invalidate all existing JWTs.
+ */
+export async function revokeSessions(req, res, next) {
+  try {
+    req.user.tokenVersion = (req.user.tokenVersion || 0) + 1;
+    await req.user.save({ validateBeforeSave: false });
+    const { clearTokenCookies } = await import("../utils/jwt.utils.js");
+    clearTokenCookies(res);
+    res.status(200).json({
+      success: true,
+      message: "All sessions revoked successfully.",
     });
   } catch (error) {
     next(error);

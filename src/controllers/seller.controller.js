@@ -8,6 +8,7 @@ import { validateTransition } from '../utils/statusTransitions.js';
 import { sendStatusNotification } from '../utils/notifications.js';
 import { createTransfer, createRecipient, resolveAccountNumber } from '../utils/paystack.utils.js';
 import { sequelize } from '../config/postgres.js';
+import { paginate, buildPaginationMetadata } from '../utils/paginate.js';
 
 const getCommissionRate = (orderAmount) => orderAmount >= 50000 ? 0.10 : 0.05;
 
@@ -180,19 +181,24 @@ export const getRevenueAnalytics = async (req, res, next) => {
 export const getSellerOrders = async (req, res, next) => {
   try {
     const sellerId = req.user._id;
-    const { status, limit = 5 } = req.query;
+    const { status, page, limit, sortBy = 'createdAt', sortOrder = 'DESC' } = req.query;
 
     const filter = { seller: sellerId };
     if (status && status !== 'all') {
       filter.status = status;
     }
 
-    const orders = await Order.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .populate('buyer', 'name email');
+    const sortQuery = {};
+    sortQuery[sortBy] = sortOrder === 'ASC' ? 1 : -1;
 
-    // Add computed payment status to each order
+    const { query, page: safePage, limit: safeLimit } = paginate(
+      Order.find(filter).sort(sortQuery).populate('buyer', 'name email'),
+      { page, limit }
+    );
+
+    const orders = await query;
+    const total = await Order.countDocuments(filter);
+
     const ordersWithPayment = orders.map(order => ({
       ...order.toObject(),
       paymentStatus: order.paymentStatus || (order.isPaid ? 'paid' : 'unpaid')
@@ -200,7 +206,8 @@ export const getSellerOrders = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      orders: ordersWithPayment
+      orders: ordersWithPayment,
+      pagination: buildPaginationMetadata(total, safePage, safeLimit),
     });
   } catch (error) {
     next(error);
@@ -236,7 +243,7 @@ export const updateOrderStatus = async (req, res, next) => {
     }
 
     // Check payment requirement for shipping
-    const isPaid = order.paymentStatus === "Paid" || order.isPaid === true;
+    const isPaid = order.paymentStatus === "paid" || order.isPaid === true;
     if (!isPaid && ["shipped", "delivered", "collected"].includes(status.toLowerCase())) {
       return res.status(400).json({ 
         success: false, 
@@ -276,11 +283,23 @@ export const updateOrderStatus = async (req, res, next) => {
 export const getTransactions = async (req, res, next) => {
   try {
     const sellerId = req.user._id.toString();
-    const transactions = await Transaction.findAll({
+    const { page = 1, limit = 20 } = req.query;
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (safePage - 1) * safeLimit;
+
+    const { count, rows: transactions } = await Transaction.findAndCountAll({
       where: { seller_id: sellerId },
-      order: [['created_at', 'DESC']]
+      order: [['created_at', 'DESC']],
+      limit: safeLimit,
+      offset,
     });
-    res.status(200).json({ success: true, transactions });
+
+    res.status(200).json({
+      success: true,
+      transactions,
+      pagination: buildPaginationMetadata(count, safePage, safeLimit),
+    });
   } catch (error) {
     next(error);
   }
@@ -435,11 +454,23 @@ export const getEscrowSummary = async (req, res, next) => {
 export const getSellerEscrows = async (req, res, next) => {
   try {
     const sellerId = req.user._id.toString();
-    const escrows = await Escrow.findAll({ 
+    const { page = 1, limit = 20 } = req.query;
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (safePage - 1) * safeLimit;
+
+    const { count, rows: escrows } = await Escrow.findAndCountAll({
       where: { seller_id: sellerId },
-      order: [['created_at', 'DESC']]
+      order: [['created_at', 'DESC']],
+      limit: safeLimit,
+      offset,
     });
-    res.status(200).json({ success: true, escrows });
+
+    res.status(200).json({
+      success: true,
+      escrows,
+      pagination: buildPaginationMetadata(count, safePage, safeLimit),
+    });
   } catch (error) {
     next(error);
   }
@@ -559,14 +590,102 @@ export const requestWithdrawal = async (req, res, next) => {
 /**
  * GET /api/seller/withdrawals
  */
+/**
+ * POST /api/seller/orders/:id/release-escrow
+ * Retry releasing escrow for an order stuck in collected with unreleased funds.
+ */
+export const releaseEscrow = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id.toString();
+    const order = await Order.findOne({ _id: req.params.id, seller: sellerId });
+
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    if (!['delivered', 'collected'].includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Order must be delivered or collected to release escrow (current: ${order.status})`,
+      });
+    }
+
+    let escrow = await Escrow.findOne({ where: { order_id: order._id.toString() } });
+    if (!escrow) {
+      const commissionRate = getCommissionRate(order.totalAmount);
+      const commission = order.totalAmount * commissionRate;
+      escrow = await Escrow.create({
+        order_id: order._id.toString(),
+        buyer_id: order.buyer.toString(),
+        seller_id: sellerId,
+        amount: order.totalAmount,
+        commission,
+        seller_amount: order.totalAmount - commission,
+        status: 'HELD',
+      });
+    }
+
+    if (escrow.status !== 'HELD') {
+      return res.status(400).json({
+        success: false,
+        message: `Escrow already ${escrow.status.toLowerCase()} for this order`,
+      });
+    }
+
+    await sequelize.transaction(async (t) => {
+      escrow.status = 'RELEASED';
+      await escrow.save({ transaction: t });
+
+      const wallet = await Wallet.findOne({ where: { seller_id: sellerId }, transaction: t });
+      if (wallet) {
+        const sellerAmount = parseFloat(escrow.seller_amount);
+        wallet.pending_balance = Math.max(0, parseFloat(wallet.pending_balance) - sellerAmount);
+        wallet.available_balance = parseFloat(wallet.available_balance) + sellerAmount;
+        wallet.total_earned = parseFloat(wallet.total_earned) + sellerAmount;
+        await wallet.save({ transaction: t });
+      }
+    });
+
+    // If order was delivered but not yet collected, update status
+    if (order.status === 'delivered') {
+      order.status = 'collected';
+      order.trackingHistory.push({
+        status: 'collected',
+        description: 'Escrow released by seller request',
+        updatedBy: req.user._id,
+      });
+      await order.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Escrow released successfully. Funds added to available balance.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getWithdrawals = async (req, res, next) => {
   try {
     const sellerId = req.user._id.toString();
-    const withdrawals = await Withdrawal.findAll({
+    const { page = 1, limit = 20 } = req.query;
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const offset = (safePage - 1) * safeLimit;
+
+    const { count, rows: withdrawals } = await Withdrawal.findAndCountAll({
       where: { seller_id: sellerId },
-      order: [['created_at', 'DESC']]
+      order: [['created_at', 'DESC']],
+      limit: safeLimit,
+      offset,
     });
-    res.status(200).json({ success: true, withdrawals });
+
+    res.status(200).json({
+      success: true,
+      withdrawals,
+      pagination: buildPaginationMetadata(count, safePage, safeLimit),
+    });
   } catch (error) {
     next(error);
   }

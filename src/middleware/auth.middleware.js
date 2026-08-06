@@ -39,7 +39,7 @@ const protect = async (req, res, next) => {
       });
     }
 
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await User.findById(decoded.id).select("-password +tokenVersion");
 
     if (!user) {
       return res.status(401).json({
@@ -52,6 +52,14 @@ const protect = async (req, res, next) => {
       return res.status(403).json({
         success: false,
         message: "Your account has been deactivated.",
+      });
+    }
+
+    if (decoded.tokenVersion !== undefined && user.tokenVersion !== decoded.tokenVersion) {
+      return res.status(401).json({
+        success: false,
+        message: "Session expired. Please log in again.",
+        code: "TOKEN_REVOKED",
       });
     }
 

@@ -13,7 +13,7 @@ const Transaction = sequelize.define("Transaction", {
     allowNull: false,
   },
   amount: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: false,
   },
   type: {
@@ -34,6 +34,10 @@ const Transaction = sequelize.define("Transaction", {
   }
 }, {
   tableName: "seller_transactions",
+  indexes: [
+    { fields: ['seller_id'] },
+    { fields: ['created_at'] },
+  ],
   timestamps: true,
   createdAt: "created_at",
   updatedAt: "updated_at",

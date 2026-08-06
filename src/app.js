@@ -5,9 +5,15 @@ import morgan from "morgan";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
 import multer from "multer";
+import { v4 as uuidv4 } from "uuid";
+import mongoSanitize from "express-mongo-sanitize";
 import * as Sentry from "@sentry/node";
-import "./instrument.js"; // Initialize Sentry first
+import "./instrument.js";
+import timeout from 'connect-timeout';
 import { initialize } from "./config/passport.js";
+
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './config/swagger.js';
 
 import authRoutes from "./routes/auth.routes.js";
 import userRoutes from "./routes/user.routes.js";
@@ -20,6 +26,8 @@ import uploadRoutes from "./routes/upload.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 
 import disputeRoutes from "./routes/dispute.routes.js";
+import supportRoutes from "./routes/support.routes.js";
+import { releaseEscrow } from './controllers/cron.controller.js';
 
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
 
@@ -35,19 +43,30 @@ app.use(["/api/webhooks/paystack", "/api/webhook/paystack"], raw({ type: 'applic
 // ─────────────────────────────────────────
 // 🔐 Security
 // ─────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://js.paystack.co"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      imgSrc: ["'self'", "https://res.cloudinary.com", "data:", "blob:"],
+      connectSrc: ["'self'", "https://api.paystack.co"],
+      fontSrc: ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: [],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
 
 // ─────────────────────────────────────────
 // 🌍 CORS CONFIG
 // ─────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL,
-  "https://www.chequemart.com",
-  "https://chequemart.com",
-  "http://localhost:5173",
-  "http://localhost:3000",
-  /\.vercel\.app$/,
-  /\.chequemart\.com$/,
 ].filter(Boolean);
 
 app.use(
@@ -58,33 +77,52 @@ app.use(
         return callback(null, true);
       }
 
-      const isAllowed = allowedOrigins.some((allowed) => {
-        if (allowed instanceof RegExp) {
-          return allowed.test(origin);
-        }
-        return allowed === origin;
-      });
+      const isAllowed = allowedOrigins.some((allowed) => allowed === origin);
 
       if (isAllowed) {
         return callback(null, true);
       }
 
-      // For production, allow all subdomains and Vercel previews
-      console.log("⚠️ CORS check origin:", origin);
-      callback(null, true);
+      console.log("⚠️ CORS blocked origin:", origin);
+      callback(new Error("Not allowed by CORS"));
     },
+    // SECURITY: credentials: true allows cookies/auth headers cross-origin.
+    // This means ANY origin in the whitelist can make credentialed requests
+    // on behalf of the user, so the whitelist must be strictly controlled.
+    // Never set this to true with origin: "*".
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
 );
 
+// Preflight — uses the same origin validator for consistency
 app.options("*", cors({
-  origin: true,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const isAllowed = allowedOrigins.some((allowed) => allowed === origin);
+    callback(null, isAllowed);
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  maxAge: 86400,
 }));
 
+
+// ─────────────────────────────────────────
+// 🆔 Request ID
+// ─────────────────────────────────────────
+app.use((req, res, next) => {
+  req.id = req.headers['x-request-id'] || uuidv4();
+  res.setHeader('X-Request-Id', req.id);
+  next();
+});
+
+app.use(timeout('25s'));
+app.use((req, res, next) => {
+  if (req.timedout) return;
+  next();
+});
 
 // ─────────────────────────────────────────
 // 🧱 Core Middleware
@@ -92,6 +130,7 @@ app.options("*", cors({
 app.use(json({ limit: "10kb" }));
 app.use(urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser());
+app.use(mongoSanitize());
 
 // ─────────────────────────────────────────
 // 📦 File Upload (Multer)
@@ -173,8 +212,23 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/webhooks", webhookRoutes);
+app.get("/api/cron/release-escrow", releaseEscrow);
 
 app.use("/api/disputes", disputeRoutes);
+app.use("/api/support", supportRoutes);
+
+// API versioning — v1
+app.use("/api/v1/auth", authLimiter, authRoutes);
+app.use("/api/v1/users", userRoutes);
+app.use("/api/v1/categories", categoryRoutes);
+app.use("/api/v1/products", productRoutes);
+app.use("/api/v1/seller", sellerRoutes);
+app.use("/api/v1/orders", orderRoutes);
+app.use("/api/v1/cart", cartRoutes);
+app.use("/api/v1/upload", uploadRoutes);
+app.use("/api/v1/webhooks", webhookRoutes);
+app.use("/api/v1/disputes", disputeRoutes);
+app.use("/api/v1/support", supportRoutes);
 
 // Health check and root
 app.get("/", (req, res) => {
@@ -186,6 +240,19 @@ app.get("/health", (req, res) => {
 
 app.get("/debug-sentry", function mainHandler(req, res) {
   throw new Error("My first Sentry error!");
+});
+
+// API Documentation
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
+
+// ⏱️ Timeout error handler
+app.use((err, req, res, next) => {
+  if (err.code === 'ETIMEDOUT' || req.timedout) {
+    return res.status(503).json({ success: false, message: 'Request timed out' });
+  }
+  next(err);
 });
 
 // ─────────────────────────────────────────

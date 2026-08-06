@@ -10,13 +10,16 @@ import { sequelize } from '../config/postgres.js';
  * This ensures funds are released automatically even if buyer forgets to mark as received.
  */
 export const startEscrowAutoReleaseJob = () => {
-  // Run every day at 2:00 AM
-  cron.schedule('0 2 * * *', async () => {
-    console.log('[Cron] Starting escrow auto-release job...');
-    await autoReleaseEscrows();
-  });
-  
-  console.log('[Cron] Escrow auto-release job scheduled (runs daily at 2:00 AM)');
+  if (!process.env.VERCEL) {
+    // Run every day at 2:00 AM
+    cron.schedule('0 2 * * *', async () => {
+      console.log('[Cron] Starting escrow auto-release job...');
+      await autoReleaseEscrows();
+    });
+    console.log('[Cron] Escrow auto-release job scheduled (runs daily at 2:00 AM)');
+  } else {
+    console.log('[Cron] Skipping node-cron scheduler (Vercel environment)');
+  }
 };
 
 /**

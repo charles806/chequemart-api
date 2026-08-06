@@ -5,7 +5,7 @@ Sentry.init({
   // Don't send PII (personally identifiable info) - keep this off for security
   sendDefaultPii: false,
   // Normal traces sample rate
-  tracesSampleRate: 1.0,
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
   // Environment will beauto-detected from NODE_ENV
   environment: process.env.NODE_ENV || "development",
 });

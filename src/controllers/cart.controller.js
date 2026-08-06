@@ -3,10 +3,6 @@ import Product from "../models/Product.model.js";
 
 // calculateCartTotals computes subtotal, delivery fees, and total for a cart
 // Delivery fees are calculated per seller (one fee per seller in the cart)
-// controllers/cart.controller.js
-
-import Cart from "../models/Cart.model.js";
-import Product from "../models/Product.model.js";
 
 /**
  * CALCULATE CART TOTALS
@@ -346,7 +342,7 @@ export const addToWishlist = async (req, res) => {
     }
 
     // Check if already in wishlist
-    if (cart.wishlist && cart.wishlist.includes(productId)) {
+    if (cart.wishlist && cart.wishlist.some(id => id.toString() === productId)) {
       return res.status(400).json({ success: false, message: "Product already in wishlist" });
     }
 

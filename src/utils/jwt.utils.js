@@ -2,6 +2,15 @@ import pkg from "jsonwebtoken";
 
 const { sign, verify } = pkg;
 
+const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
+const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
+
+if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
+  throw new Error(
+    "JWT secrets are not configured. Set JWT_ACCESS_SECRET and JWT_REFRESH_SECRET in your .env file."
+  );
+}
+
 // SECURITY: Specify algorithm to prevent algorithm confusion attacks
 const ACCESS_TOKEN_ALGORITHM = "HS256";
 const REFRESH_TOKEN_ALGORITHM = "HS256";
@@ -13,7 +22,7 @@ const REFRESH_TOKEN_ALGORITHM = "HS256";
  * @returns {string} Signed JWT access token
  */
 const generateAccessToken = (payload) => {
-  return sign(payload, process.env.JWT_ACCESS_SECRET, {
+  return sign(payload, ACCESS_TOKEN_SECRET, {
     algorithm: ACCESS_TOKEN_ALGORITHM,
     expiresIn: process.env.JWT_ACCESS_EXPIRES || "15m",
   });
@@ -26,7 +35,7 @@ const generateAccessToken = (payload) => {
  * @returns {string} Signed JWT refresh token
  */
 const generateRefreshToken = (payload) => {
-  return sign(payload, process.env.JWT_REFRESH_SECRET, {
+  return sign(payload, REFRESH_TOKEN_SECRET, {
     algorithm: REFRESH_TOKEN_ALGORITHM,
     expiresIn: process.env.JWT_REFRESH_EXPIRES || "14d",
   });
@@ -39,7 +48,7 @@ const generateRefreshToken = (payload) => {
  * @returns {object} Decoded payload or throws error
  */
 const verifyAccessToken = (token) => {
-  return verify(token, process.env.JWT_ACCESS_SECRET, {
+  return verify(token, ACCESS_TOKEN_SECRET, {
     algorithms: [ACCESS_TOKEN_ALGORITHM],
   });
 };
@@ -51,7 +60,7 @@ const verifyAccessToken = (token) => {
  * @returns {object} Decoded payload or throws error
  */
 const verifyRefreshToken = (token) => {
-  return verify(token, process.env.JWT_REFRESH_SECRET, {
+  return verify(token, REFRESH_TOKEN_SECRET, {
     algorithms: [REFRESH_TOKEN_ALGORITHM],
   });
 };

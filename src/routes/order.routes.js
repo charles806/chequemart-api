@@ -5,24 +5,27 @@ import {
   getOrderById, 
   cancelOrder,
   confirmOrder,
-  markReceived,
+  markCollected,
   updateOrderStatus,
-  initializePayment
+  initializePayment,
+  verifyPayment
 } from '../controllers/order.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
+import { createOrderValidation, validate } from '../middleware/validation.middleware.js';
 
 const router = Router();
 
 // All order routes require authentication
 router.use(protect);
 
-router.post('/', createOrder);
+router.post('/', createOrderValidation, validate, createOrder);
 router.post('/initialize-payment', initializePayment);
+router.get('/verify/:reference', verifyPayment);
 router.get('/', getMyOrders);
 router.get('/:id', getOrderById);
 router.patch('/:id/cancel', cancelOrder);
 router.patch('/:id/confirm', confirmOrder);
-router.patch('/:id/receive', markReceived);
+router.patch('/:id/collect', markCollected);
 router.patch('/:id/status', updateOrderStatus);
 
 export default router;

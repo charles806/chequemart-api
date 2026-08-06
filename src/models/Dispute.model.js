@@ -62,6 +62,10 @@ const Dispute = sequelize.define("Dispute", {
   },
 }, {
   tableName: "disputes",
+  indexes: [
+    { fields: ['order_id'] },
+    { fields: ['status'] },
+  ],
   timestamps: true,
   createdAt: "created_at",
   updatedAt: "updated_at",

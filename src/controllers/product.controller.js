@@ -43,6 +43,10 @@ export const getAllProducts = async (req, res) => {
       ];
     }
 
+    if (req.query.rating) {
+      filter.averageRating = { $gte: Number(req.query.rating) };
+    }
+
     // Handle sorting
     let sortQuery = {};
     switch (sort) {
@@ -54,6 +58,12 @@ export const getAllProducts = async (req, res) => {
         break;
       case 'name':
         sortQuery = { name: 1 };
+        break;
+      case 'rating':
+        sortQuery = { averageRating: -1 };
+        break;
+      case 'popular':
+        sortQuery = { totalReviews: -1, averageRating: -1 };
         break;
       case 'newest':
       default:

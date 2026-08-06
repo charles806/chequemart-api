@@ -1,5 +1,4 @@
 import pkg from "sequelize";
-import pg from "pg";
 const { Sequelize } = pkg;
 import "dotenv/config";
 
@@ -10,27 +9,33 @@ export const sequelize = new Sequelize(process.env.POSTGRES_URI, {
   dialectOptions: {
     ssl: {
       require: true,
-      rejectUnauthorized: false
-    }
+      rejectUnauthorized: false,
+    },
   },
   pool: {
     max: 5,
-    min: 0,
+    min: 1,
     acquire: 30000,
-    idle: 10000,
+    idle: 60000,
   },
 });
 
 export const connectPostgres = async () => {
   try {
     await sequelize.authenticate();
-    console.log("✅ PostgreSQL Connected: Financial tables");
-
-    // We use alter: true to automatically update tables safely during MVP phase
-    await sequelize.sync({ alter: true });
-    console.log("✅ PostgreSQL schema synced");
+    console.log("PostgreSQL Connected: Financial tables");
+    // In development, sync models (safe for local dev)
+    if (process.env.NODE_ENV === 'development') {
+      await sequelize.sync({ alter: true });
+      console.log("PostgreSQL schema synced (dev mode)");
+    } else {
+      console.log("PostgreSQL: Running in production mode — migrations must be run manually.");
+      console.log("  Run: npm run migrate");
+    }
   } catch (error) {
-    console.warn(`⚠️ PostgreSQL Connection Warning: ${error.message}`);
-    // Non-fatal error - continue without PostgreSQL
+    console.warn(`PostgreSQL Connection Warning: ${error.message}`);
   }
 };
+
+// Connection pool monitoring
+sequelize.afterConnect(() => console.log('PostgreSQL: connection acquired'));

@@ -19,7 +19,10 @@ const orderSchema = new mongoose.Schema({
         required: true,
       },
       name: String,
-      price: Number,
+      price: {
+        type: Number,
+        min: [0, "Price cannot be negative"],
+      },
       quantity: {
         type: Number,
         default: 1,
@@ -30,6 +33,7 @@ const orderSchema = new mongoose.Schema({
   totalAmount: {
     type: Number,
     required: true,
+    min: [0, "Total amount cannot be negative"],
   },
   status: {
     type: String,
@@ -39,10 +43,14 @@ const orderSchema = new mongoose.Schema({
   trackingNumber: {
     type: String,
     default: null,
+    maxlength: [100, "Tracking number cannot exceed 100 characters"],
+    trim: true,
   },
   carrier: {
     type: String,
     default: null,
+    maxlength: [50, "Carrier name cannot exceed 50 characters"],
+    trim: true,
   },
   trackingHistory: [
     {
@@ -69,7 +77,6 @@ const orderSchema = new mongoose.Schema({
   },
   paymentReference: {
     type: String,
-    unique: true,
     sparse: true,
   },
   isPaid: {
@@ -86,7 +93,8 @@ orderSchema.index({ buyer: 1, createdAt: -1 });
 orderSchema.index({ seller: 1, createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ paymentStatus: 1 });
-orderSchema.index({ paymentReference: 1 });
+orderSchema.index({ seller: 1, status: 1 });
+orderSchema.index({ escrowId: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
 

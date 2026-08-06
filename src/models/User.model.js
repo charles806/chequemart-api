@@ -100,15 +100,29 @@ const UserSchema = new Schema(
     },
 
     passwordResetOTP: {
-      type: {
-        code: { type: String, select: false },
-        expiresAt: { type: Date, select: false }
-      },
-      select: false,
+      code: { type: String, select: false },
+      expiresAt: { type: Date, select: false },
     },
 
     refreshToken: {
       type: String,
+      select: false,
+    },
+
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
+
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      select: false,
+    },
+    lockedUntil: {
+      type: Date,
+      default: null,
       select: false,
     },
 
