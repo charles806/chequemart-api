@@ -1,7 +1,7 @@
 import { Router } from "express";
 const router = Router();
 
-import { register, registerVendor, login, logout, refreshToken, verifyEmail, forgotPassword, forgotPasswordOTP, verifyResetOTP, resetPasswordOTP, resetPassword, getMe, getBanks, resolveAccount, becomeSeller, completeOnboarding, revokeSessions, googleCallback } from "../controllers/auth.controller.js";
+import { register, registerVendor, login, logout, refreshToken, verifyEmail, resendVerification, forgotPassword, forgotPasswordOTP, verifyResetOTP, resetPasswordOTP, resetPassword, getMe, getBanks, resolveAccount, becomeSeller, completeOnboarding, revokeSessions } from "../controllers/auth.controller.js";
 
 import { protect } from "../middleware/auth.middleware.js";
 import { 
@@ -28,10 +28,11 @@ router.post("/login", loginValidation, validate, login);
 //  Token Management ─
 router.post("/logout", protect, logout);
 router.post("/revoke-sessions", protect, revokeSessions);
-router.post("/refresh-token", refreshToken);
+router.post("/refresh-token", protect, refreshToken);
 
 //  Email Verification 
 router.get("/verify-email", verifyEmailValidation, validate, verifyEmail);
+router.post("/resend-verification", protect, resendVerification);
 
 //  Password Reset 
 router.post("/forgot-password", forgotPasswordValidation, validate, forgotPassword);
@@ -57,13 +58,8 @@ router.post("/complete-onboarding", protect, completeOnboarding);
 // ════════════════════════════════════════════════════════════════════════════════
 //  ⚠️  PHASE 2 ROUTES — DISABLED FOR MVP
 //  Uncomment these when Phase 2 development begins.
-//  Per PRD Section 8.2: Google OAuth and SMS are Phase 2 features.
+//  Per PRD Section 8.2: SMS notifications are Phase 2 features.
 // ════════════════════════════════════════════════════════════════════════════════
-
-//  Google OAuth (Phase 2)
-import passport from "passport";
-router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
-router.get("/google/callback", passport.authenticate("google", { session: false, failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth_failed` }), googleCallback);
 
 //  Phone OTP via SMS (Phase 2)
 // router.post("/send-otp", sendPhoneOTP);

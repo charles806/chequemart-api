@@ -18,14 +18,21 @@ const orderSchema = new mongoose.Schema({
         ref: 'Product',
         required: true,
       },
-      name: String,
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: [100, "Product name cannot exceed 100 characters"],
+      },
       price: {
         type: Number,
+        required: true,
         min: [0, "Price cannot be negative"],
       },
       quantity: {
         type: Number,
         default: 1,
+        min: [1, "Quantity must be at least 1"],
       },
       image: String,
     }
@@ -37,7 +44,7 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'collected', 'cancelled'],
+    enum: ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'collected', 'cancelled', 'disputed', 'refunded'],
     default: 'pending',
   },
   trackingNumber: {
@@ -54,7 +61,10 @@ const orderSchema = new mongoose.Schema({
   },
   trackingHistory: [
     {
-      status: String,
+      status: {
+        type: String,
+        enum: ['pending', 'processing', 'confirmed', 'shipped', 'delivered', 'collected', 'cancelled', 'disputed', 'refunded'],
+      },
       description: String,
       timestamp: { type: Date, default: Date.now },
       updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
@@ -90,11 +100,24 @@ const orderSchema = new mongoose.Schema({
 
 // Add indexes for frequently queried fields to improve query performance
 orderSchema.index({ buyer: 1, createdAt: -1 });
+orderSchema.index({ buyer: 1, status: 1 });
 orderSchema.index({ seller: 1, createdAt: -1 });
+orderSchema.index({ seller: 1, status: 1 });
+orderSchema.index({ seller: 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1 });
 orderSchema.index({ paymentStatus: 1 });
-orderSchema.index({ seller: 1, status: 1 });
 orderSchema.index({ escrowId: 1 });
+// paymentReference is indexed via the field-level `sparse: true` option
+
+// Keep documents well under the 16MB BSON limit
+orderSchema.path("products").validate(
+  (products) => products.length <= 100,
+  "An order cannot contain more than 100 line items"
+);
+orderSchema.path("trackingHistory").validate(
+  (history) => history.length <= 100,
+  "Tracking history cannot exceed 100 entries"
+);
 
 const Order = mongoose.model('Order', orderSchema);
 

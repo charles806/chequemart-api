@@ -1,4 +1,5 @@
 import Order from '../models/Order.model.js';
+import Product from '../models/Product.model.js';
 import Wallet from '../models/Wallet.model.js';
 import Transaction from '../models/Transaction.model.js';
 import BankDetail from '../models/BankDetail.model.js';
@@ -685,6 +686,62 @@ export const getWithdrawals = async (req, res, next) => {
       success: true,
       withdrawals,
       pagination: buildPaginationMetadata(count, safePage, safeLimit),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/seller/reviews
+ * Returns every review left on any product belonging to the seller.
+ * Flattens the per-product ratings[] subdocuments into a single newest-first list.
+ */
+export const getSellerReviews = async (req, res, next) => {
+  try {
+    const sellerId = req.user._id;
+    const { page = 1, limit = 20 } = req.query;
+
+    const filter = { seller: sellerId };
+
+    // Pull only the fields we need, keep documents small
+    const products = await Product.find(filter)
+      .select('name images averageRating totalReviews ratings')
+      .populate('ratings.user', 'name');
+
+    // Flatten every rating into one review entry with its product context
+    const allReviews = products.flatMap((product) =>
+      (product.ratings || []).map((r) => ({
+        productId: product._id,
+        productName: product.name,
+        productImage: Array.isArray(product.images) ? product.images[0] : null,
+        rating: r.rating,
+        review: r.review || '',
+        reviewerName: r.user?.name || 'Anonymous',
+        createdAt: r.createdAt,
+      }))
+    );
+
+    // Sort newest first across all products
+    allReviews.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Minimal pagination over the flattened list
+    const safePage = Math.max(1, parseInt(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, parseInt(limit) || 20));
+    const skip = (safePage - 1) * safeLimit;
+    const total = allReviews.length;
+    const paginated = allReviews.slice(skip, skip + safeLimit);
+
+    res.status(200).json({
+      success: true,
+      reviews: paginated,
+      summary: {
+        totalReviews: total,
+        averageRating: products.length
+          ? products.reduce((sum, p) => sum + (p.averageRating || 0), 0) / products.length
+          : 0,
+      },
+      pagination: buildPaginationMetadata(total, safePage, safeLimit),
     });
   } catch (error) {
     next(error);

@@ -10,7 +10,6 @@ const CategorySchema = new Schema(
       trim: true,
       minlength: [2, "Category name must be at least 2 characters"],
       maxlength: [60, "Category name cannot exceed 60 characters"],
-      unique: true,
     },
     description: {
       type: String,
@@ -33,6 +32,7 @@ const CategorySchema = new Schema(
     order: {
       type: Number,
       default: 0,
+      min: [0, "Order cannot be negative"],
     },
   },
   {
@@ -42,5 +42,7 @@ const CategorySchema = new Schema(
 
 CategorySchema.index({ parentCategory: 1 });
 CategorySchema.index({ isActive: 1 });
+CategorySchema.index({ name: 1 }, { unique: true, collation: { locale: "en", strength: 2 } });
+CategorySchema.index({ isActive: 1, parentCategory: 1 });
 
 export default model("Category", CategorySchema);

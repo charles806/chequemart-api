@@ -17,6 +17,8 @@ const getTransporter = () => {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS, // Google App Password (16 chars)
       },
+      connectionTimeout: 5000,
+      greetingTimeout: 5000,
       tls: {
         rejectUnauthorized: false,
       },

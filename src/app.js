@@ -10,7 +10,6 @@ import mongoSanitize from "express-mongo-sanitize";
 import * as Sentry from "@sentry/node";
 import "./instrument.js";
 import timeout from 'connect-timeout';
-import { initialize } from "./config/passport.js";
 
 import swaggerUi from 'swagger-ui-express';
 import swaggerSpec from './config/swagger.js';
@@ -151,11 +150,6 @@ app.use((req, res, next) => {
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
-
-// ─────────────────────────────────────────
-// 🔐 Auth / Passport
-// ─────────────────────────────────────────
-app.use(initialize());
 
 // ─────────────────────────────────────────
 // 🚦 Rate Limiting

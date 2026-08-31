@@ -31,6 +31,16 @@ const cartSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+cartSchema.path("items").validate(
+  (items) => items.length <= 50,
+  "Cart cannot hold more than 50 items"
+);
+
+cartSchema.path("wishlist").validate(
+  (wishlist) => wishlist.length <= 100,
+  "Wishlist cannot hold more than 100 items"
+);
+
 const Cart = mongoose.model("Cart", cartSchema);
 
 export default Cart;

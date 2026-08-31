@@ -243,7 +243,7 @@ export async function changePassword(req, res, next) {
 
     // Update password (will be hashed by pre-save hook)
     user.password = newPassword;
-    user.refreshToken = null; // Invalidate all sessions
+    user.tokenVersion = (user.tokenVersion || 0) + 1; // Invalidate all sessions
     await user.save();
 
     res.status(200).json({

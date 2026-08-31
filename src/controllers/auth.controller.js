@@ -6,9 +6,17 @@ import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
-  setTokenCookies,
-  clearTokenCookies,
+  setSessionCookie,
+  clearSessionCookie,
 } from "../utils/jwt.utils.js";
+
+import {
+  createSession,
+  getSession,
+  updateSession,
+  deleteSession,
+  deleteSessionsByUser,
+} from "../services/session.service.js";
 
 import {
   generateOTP,
@@ -30,33 +38,35 @@ import {
 } from "../utils/paystack.utils.js";
 
 // ─────────────────────────────────────────────
-//  HELPER: Issue tokens and send response
+//  HELPER: Create a server-side session and respond
 // ─────────────────────────────────────────────
 /**
- * issueTokensAndRespond
- * Generates access + refresh tokens, saves refresh token to DB,
- * sets HTTP-only cookies, and sends JSON response.
+ * createSessionAndRespond
+ * Generates access + refresh tokens, stores them in a server-side session,
+ * sets the single HttpOnly session cookie, and sends a JSON response.
+ * The browser NEVER sees the tokens — only the opaque session id.
  *
  * @param {object} user    - Mongoose user document
  * @param {number} status  - HTTP status code
  * @param {object} res     - Express response object
  */
-const issueTokensAndRespond = async (user, status, res) => {
+const createSessionAndRespond = async (user, status, res) => {
   const payload = { id: user._id, role: user.role, tokenVersion: user.tokenVersion };
 
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
 
-  // Save refresh token to DB for rotation / invalidation
-  user.refreshToken = refreshToken;
-  await user.save({ validateBeforeSave: false });
+  const sid = await createSession({
+    userId: user._id,
+    accessToken,
+    refreshToken,
+    userSnapshot: user.toPublicProfile(),
+  });
 
-  // Set tokens as HTTP-only cookies
-  setTokenCookies(res, accessToken, refreshToken);
+  setSessionCookie(res, sid);
 
   res.status(status).json({
     success: true,
-    accessToken, // Also return in body for clients that use headers
     user: user.toPublicProfile(),
   });
 };
@@ -213,19 +223,18 @@ export async function register(req, res, next) {
     });
 
     // ── Send verification email if email was provided ───────────────────
+    // Fire-and-forget: never block registration on email delivery.
+    // If it fails, the user can request a new link via /resend-verification.
     if (email) {
-      try {
-        await sendVerificationEmail(user.email, user.name, verificationToken);
-      } catch (emailError) {
-        console.error(
-          "⚠️ Verification email failed to send:",
-          emailError.message,
-        );
-      }
+      sendVerificationEmail(user.email, user.name, verificationToken)
+        .then(() => {})
+        .catch((emailError) => {
+          console.error("⚠️ Verification email failed:", emailError?.message ?? emailError);
+        });
     }
 
-    // ── Issue JWT tokens and respond ────────────────────────────────────
-    await issueTokensAndRespond(user, 201, res);
+    // ── Issue tokens and respond ────────────────────────────────────
+    await createSessionAndRespond(user, 201, res);
   } catch (error) {
     next(error);
   }
@@ -305,7 +314,7 @@ export async function login(req, res, next) {
     user.failedLoginAttempts = 0;
     user.lockedUntil = null;
 
-    await issueTokensAndRespond(user, 200, res);
+    await createSessionAndRespond(user, 200, res);
   } catch (error) {
     next(error);
   }
@@ -316,16 +325,13 @@ export async function login(req, res, next) {
 // ─────────────────────────────────────────────
 /**
  * POST /api/auth/logout
- * Clears auth cookies and invalidates refresh token in DB.
+ * Destroys the server-side session and clears the session cookie.
  */
 export async function logout(req, res, next) {
   try {
-    // Remove refresh token from DB to prevent reuse
-    if (req.user) {
-      await User.findByIdAndUpdate(req.user._id, { refreshToken: null });
-    }
+    await deleteSession(req.session.sid);
 
-    clearTokenCookies(res);
+    clearSessionCookie(res);
 
     res.status(200).json({
       success: true,
@@ -341,36 +347,57 @@ export async function logout(req, res, next) {
 // ─────────────────────────────────────────────
 /**
  * POST /api/auth/refresh-token
- * Issues a new access token using a valid refresh token.
- * Implements refresh token rotation (old token invalidated).
+ * Rotates the tokens stored in the server-side session.
+ * The refresh token never leaves the server — it comes from the session,
+ * identified by the single HttpOnly session cookie.
+ * Implements refresh token rotation (old refresh token invalidated).
  */
 export async function refreshToken(req, res, next) {
   try {
-    // Get refresh token from cookie or body
-    const token = req.cookies?.refreshToken || req.body?.refreshToken;
+    // Session is guaranteed by the protect middleware
+    const session = await getSession(req.session.sid);
 
-    if (!token) {
+    if (!session) {
+      clearSessionCookie(res);
       return res.status(401).json({
         success: false,
-        message: "No refresh token provided.",
+        message: "No session provided.",
       });
     }
 
-    // Verify the token signature
-    const decoded = verifyRefreshToken(token);
+    // Verify the refresh token signature
+    const decoded = verifyRefreshToken(session.refreshToken);
 
-    // Find user and check stored refresh token matches (rotation check)
-    const user = await User.findById(decoded.id).select("+refreshToken");
+    if (!decoded?.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid refresh token. Please log in again.",
+      });
+    }
 
-    if (!user || user.refreshToken !== token) {
+    const user = await User.findById(decoded.id);
+
+    if (!user || !user.isActive) {
+      await deleteSession(req.session.sid);
+      clearSessionCookie(res);
       return res.status(401).json({
         success: false,
         message: "Invalid or expired refresh token. Please log in again.",
       });
     }
 
-    // Issue new tokens (rotation)
-    await issueTokensAndRespond(user, 200, res);
+    // Issue new tokens and rotate them into the session
+    const payload = { id: user._id, role: user.role, tokenVersion: user.tokenVersion };
+    const accessToken = generateAccessToken(payload);
+    const refreshToken = generateRefreshToken(payload);
+
+    await updateSession(req.session.sid, { accessToken, refreshToken, userSnapshot: user.toPublicProfile() });
+    setSessionCookie(res, req.session.sid);
+
+    res.status(200).json({
+      success: true,
+      user: user.toPublicProfile(),
+    });
   } catch (error) {
     next(error);
   }
@@ -518,43 +545,6 @@ export async function resolveAccount(req, res, next) {
 }
 
 // ─────────────────────────────────────────────
-//  ⚠️  PHASE 2 — GOOGLE OAUTH CALLBACK
-//  Route is DISABLED in auth.routes.js
-//  Per PRD Section 8.2: Google OAuth is Phase 2
-// ─────────────────────────────────────────────
-/**
- * GET /api/auth/google/callback
- * Called by Passport after successful Google OAuth.
- * Issues tokens and redirects to the client.
- *
- * NOT ACTIVE IN MVP — route is commented out in auth.routes.js
- */
-export async function googleCallback(req, res, next) {
-  try {
-    const user = req.user; // Set by Passport
-
-    if (!user) {
-      return res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
-    }
-
-    const payload = { id: user._id, role: user.role };
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
-
-    // Save refresh token to DB
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
-
-    // Redirect to client with token in URL
-    res.redirect(
-      `${process.env.CLIENT_URL}/auth/callback?token=${accessToken}`,
-    );
-  } catch (error) {
-    next(error);
-  }
-}
-
-// ─────────────────────────────────────────────
 // ─────────────────────────────────────────────
 //  ⚠️  PHASE 2 — SEND PHONE OTP (route disabled in auth.routes.js)
 //  Per PRD Section 8.2: SMS notifications are Phase 2
@@ -663,7 +653,7 @@ export async function verifyPhoneOTP(req, res, next) {
 
     await user.save({ validateBeforeSave: false });
 
-    await issueTokensAndRespond(user, 200, res);
+    await createSessionAndRespond(user, 200, res);
   } catch (error) {
     next(error);
   }
@@ -706,6 +696,60 @@ export async function verifyEmail(req, res, next) {
     res.status(200).json({
       success: true,
       message: "Email verified successfully. You can now log in.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─────────────────────────────────────────────
+//  8b. RESEND VERIFICATION EMAIL
+// ─────────────────────────────────────────────
+/**
+ * POST /api/auth/resend-verification
+ * Generates a new verification token and emails it to the logged-in user.
+ * Used when the original verification email failed or expired.
+ */
+export async function resendVerification(req, res, next) {
+  try {
+    const user = await User.findById(req.user.id).select("+emailVerificationToken");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    if (user.isVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Your email is already verified.",
+      });
+    }
+
+    if (!user.email) {
+      return res.status(400).json({
+        success: false,
+        message: "No email address on this account to verify.",
+      });
+    }
+
+    // Generate a fresh token so old links are invalidated
+    const verificationToken = randomBytes(32).toString("hex");
+    user.emailVerificationToken = verificationToken;
+    await user.save({ validateBeforeSave: false });
+
+    // Fire-and-forget: respond immediately regardless of email success
+    sendVerificationEmail(user.email, user.name, verificationToken)
+      .then(() => {})
+      .catch((emailError) => {
+        console.error("⚠️ Verification email failed:", emailError?.message ?? emailError);
+      });
+
+    res.status(200).json({
+      success: true,
+      message: "If your email is on file, a new verification link has been sent.",
     });
   } catch (error) {
     next(error);
@@ -1049,8 +1093,11 @@ export async function resetPassword(req, res, next) {
     user.password = password; // Will be hashed by pre-save hook
     user.passwordResetToken = undefined;
     user.passwordResetExpiresAt = undefined;
-    user.refreshToken = undefined; // Invalidate all sessions
     await user.save();
+
+    // Invalidate all existing sessions so the user logs in with the new password
+    await deleteSessionsByUser(user._id);
+    clearSessionCookie(res);
 
     res.status(200).json({
       success: true,
@@ -1153,8 +1200,8 @@ export async function becomeSeller(req, res, next) {
     user.sellerInfo = sellerInfo;
     await user.save();
 
-    // Issue new JWT with seller role
-    await issueTokensAndRespond(user, 200, res);
+    // Issue new session with seller role
+    await createSessionAndRespond(user, 200, res);
   } catch (error) {
     next(error);
   }
@@ -1262,8 +1309,11 @@ export async function revokeSessions(req, res, next) {
   try {
     req.user.tokenVersion = (req.user.tokenVersion || 0) + 1;
     await req.user.save({ validateBeforeSave: false });
-    const { clearTokenCookies } = await import("../utils/jwt.utils.js");
-    clearTokenCookies(res);
+
+    // Destroy every session belonging to the user
+    await deleteSessionsByUser(req.user._id);
+    clearSessionCookie(res);
+
     res.status(200).json({
       success: true,
       message: "All sessions revoked successfully.",

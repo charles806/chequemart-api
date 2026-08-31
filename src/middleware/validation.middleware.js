@@ -258,4 +258,5 @@ export const createProductValidation = [
   body("stock").optional().isInt({ min: 0 }).withMessage("Stock cannot be negative"),
   body("condition").optional().isIn(["Brand New", "Like New", "Fairly Used", "Refurbished"]),
   body("deliveryFee").optional().isFloat({ min: 0 }),
+  body("discountPrice").optional().isFloat({ min: 0 }),
 ];

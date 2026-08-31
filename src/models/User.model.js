@@ -36,12 +36,6 @@ const UserSchema = new Schema(
       select: false, // Do not return password by default
     },
 
-    googleId: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
-
     phone: {
       type: String,
       unique: true,
@@ -54,7 +48,7 @@ const UserSchema = new Schema(
 
     authMethod: {
       type: String,
-      enum: ["local", "phone", "google"],
+      enum: ["local", "phone"],
       default: "local",
     },
 
@@ -77,6 +71,7 @@ const UserSchema = new Schema(
     avatar: {
       type: String,
       default: null,
+      maxlength: [500, "Avatar URL cannot exceed 500 characters"],
     },
 
     otp: {
@@ -127,50 +122,57 @@ const UserSchema = new Schema(
     },
 
     sellerInfo: {
-      storeName: { type: String, default: null },
-      businessCategory: { type: String, default: null },
-      businessAddress: { type: String, default: null },
+      storeName: { type: String, default: null, maxlength: [60, "Store name cannot exceed 60 characters"] },
+      businessCategory: { type: String, default: null, maxlength: [60, "Business category cannot exceed 60 characters"] },
+      businessAddress: { type: String, default: null, maxlength: [200, "Business address cannot exceed 200 characters"] },
       isApproved: { type: Boolean, default: false },
       onboardingComplete: { type: Boolean, default: false },
       businessEmail: { type: String, default: null },
-      description: { type: String, default: null },
-      location: { type: String, default: null },
-      category: { type: String, default: null },
-      logo: { type: String, default: null },
-      banner: { type: String, default: null },
+      description: { type: String, default: null, maxlength: [1000, "Store description cannot exceed 1000 characters"] },
+      location: { type: String, default: null, maxlength: [100, "Location cannot exceed 100 characters"] },
+      category: { type: String, default: null, maxlength: [60, "Category cannot exceed 60 characters"] },
+      logo: { type: String, default: null, maxlength: [500, "Logo URL cannot exceed 500 characters"] },
+      banner: { type: String, default: null, maxlength: [500, "Banner URL cannot exceed 500 characters"] },
       socialLinks: {
-        instagram: { type: String, default: null },
-        twitter: { type: String, default: null },
-        whatsapp: { type: String, default: null },
+        instagram: { type: String, default: null, maxlength: [200, "Social link cannot exceed 200 characters"] },
+        twitter: { type: String, default: null, maxlength: [200, "Social link cannot exceed 200 characters"] },
+        whatsapp: { type: String, default: null, maxlength: [200, "Social link cannot exceed 200 characters"] },
       },
 
-      paystackSubaccountCode: { type: String, default: null },
-      paystackSubaccountId: { type: String, default: null },
-      bankName: { type: String, default: null },
-      bankCode: { type: String, default: null },
-      accountNumber: { type: String, default: null },
-      accountName: { type: String, default: null },
+      paystackSubaccountCode: { type: String, default: null, maxlength: [100, "Paystack code cannot exceed 100 characters"] },
+      paystackSubaccountId: { type: String, default: null, maxlength: [100, "Paystack ID cannot exceed 100 characters"] },
+      bankName: { type: String, default: null, maxlength: [60, "Bank name cannot exceed 60 characters"] },
+      bankCode: { type: String, default: null, maxlength: [10, "Bank code cannot exceed 10 characters"] },
+      accountNumber: { type: String, default: null, maxlength: [20, "Account number cannot exceed 20 characters"] },
+      accountName: { type: String, default: null, maxlength: [100, "Account name cannot exceed 100 characters"] },
     },
 
     deliveryAddresses: {
       type: [{
-        label: { type: String, default: 'Home' },
-        fullName: { type: String, required: true },
-        phone: { type: String, required: true },
-        address: { type: String, required: true },
-        city: { type: String, required: true },
-        state: { type: String, required: true },
-        landmark: { type: String },
+        label: { type: String, default: 'Home', maxlength: [40, "Label cannot exceed 40 characters"] },
+        fullName: { type: String, required: true, maxlength: [60, "Full name cannot exceed 60 characters"] },
+        phone: { type: String, required: true, maxlength: [20, "Phone cannot exceed 20 characters"] },
+        address: { type: String, required: true, maxlength: [200, "Address cannot exceed 200 characters"] },
+        city: { type: String, required: true, maxlength: [60, "City cannot exceed 60 characters"] },
+        state: { type: String, required: true, maxlength: [60, "State cannot exceed 60 characters"] },
+        landmark: { type: String, maxlength: [200, "Landmark cannot exceed 200 characters"] },
         isDefault: { type: Boolean, default: false }
       }],
       default: [],
-      comment: "Saved delivery addresses for buyers"
+      comment: "Saved delivery addresses for buyers",
+      validate: {
+        validator: (v) => v.length <= 10,
+        message: "Cannot save more than 10 delivery addresses",
+      },
     },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt
   }
 );
+
+UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 
 // ────────────────────────────────────────────────────────────────
 // Pre-save middleware to hash password if modified

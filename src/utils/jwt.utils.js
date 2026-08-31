@@ -66,44 +66,44 @@ const verifyRefreshToken = (token) => {
 };
 
 /**
- * setTokenCookies
- * Sends access and refresh tokens as secure HTTP-only cookies.
- * SECURITY: Added csrfToken for CSRF protection
- * @param {object} res           - Express response object
- * @param {string} accessToken   - JWT access token
- * @param {string} refreshToken  - JWT refresh token
+ * Session cookie name — the single opaque HttpOnly cookie that references
+ * the server-side session. Scoped to /api so it is never sent with
+ * non-API requests or static assets.
  */
-const setTokenCookies = (res, accessToken, refreshToken) => {
+export const SESSION_COOKIE_NAME =
+  process.env.SESSION_COOKIE_NAME || "sid";
+
+const SESSION_COOKIE_MAX_AGE_MS =
+  Number(process.env.SESSION_TTL_DAYS || 7) * 24 * 60 * 60 * 1000;
+
+/**
+ * setSessionCookie
+ * Sets the single session cookie:
+ *   - httpOnly (invisible to JS), secure in production
+ *   - SameSite=Lax (blocks most cross-site CSRF)
+ *   - path scoped to /api
+ * @param {object} res - Express response object
+ * @param {string} sid - opaque session id
+ */
+const setSessionCookie = (res, sid) => {
   const isProduction = process.env.NODE_ENV === "production";
 
-  // Access token cookie — match JWT_ACCESS_EXPIRES (15 minutes)
-  // httpOnly: false so the frontend can read it for authorization
-  res.cookie("accessToken", accessToken, {
-    httpOnly: false,
-    secure: isProduction,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 15 * 60 * 1000, // 15 minutes in ms
-  });
-
-  // Refresh token cookie — expires in 7 days
-  res.cookie("refreshToken", refreshToken, {
+  res.cookie(SESSION_COOKIE_NAME, sid, {
     httpOnly: true,
     secure: isProduction,
     sameSite: "lax",
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+    path: "/api",
+    maxAge: SESSION_COOKIE_MAX_AGE_MS,
   });
 };
 
 /**
- * clearTokenCookies
- * Clears auth cookies on logout.
+ * clearSessionCookie
+ * Clears the session cookie (logout / revoke-sessions).
  * @param {object} res - Express response object
  */
-const clearTokenCookies = (res) => {
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
+const clearSessionCookie = (res) => {
+  res.clearCookie(SESSION_COOKIE_NAME, { path: "/api" });
 };
 
 export {
@@ -111,6 +111,6 @@ export {
   generateRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
-  setTokenCookies,
-  clearTokenCookies,
+  setSessionCookie,
+  clearSessionCookie,
 };

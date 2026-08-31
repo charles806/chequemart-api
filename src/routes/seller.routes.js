@@ -13,7 +13,8 @@ import {
   getSellerEscrows,
   releaseEscrow,
   requestWithdrawal,
-  getWithdrawals
+  getWithdrawals,
+  getSellerReviews
 } from '../controllers/seller.controller.js';
 import { protect, restrictTo } from '../middleware/auth.middleware.js';
 import { requestWithdrawalValidation, validate } from '../middleware/validation.middleware.js';
@@ -25,6 +26,7 @@ router.use(protect);
 router.use(restrictTo('seller', 'admin'));
 
 router.get('/wallet', getWallet);
+router.get('/reviews', getSellerReviews);
 router.get('/wallet/transactions', getTransactions);
 router.get('/bank-accounts', getBankAccounts);
 router.post('/bank-accounts', addBankAccount);

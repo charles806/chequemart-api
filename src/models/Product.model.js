@@ -38,6 +38,10 @@ const ProductSchema = new Schema(
     images: {
       type: [String],
       default: [],
+      validate: {
+        validator: (v) => v.length <= 10,
+        message: "A product cannot have more than 10 images",
+      },
     },
     condition: {
       type: String,
@@ -53,6 +57,8 @@ const ProductSchema = new Schema(
       type: String,
       unique: true,
       sparse: true,
+      maxlength: [64, "SKU cannot exceed 64 characters"],
+      trim: true,
     },
     seller: {
       type: Schema.Types.ObjectId,
@@ -91,7 +97,11 @@ const ProductSchema = new Schema(
         }
       }],
       default: [],
-      comment: "Product variants (e.g., Size: L, Color: Red)"
+      comment: "Product variants (e.g., Size: L, Color: Red)",
+      validate: {
+        validator: (v) => v.length <= 20,
+        message: "A product cannot have more than 20 variants",
+      },
     },
     ratings: {
       type: [{
@@ -116,6 +126,10 @@ const ProductSchema = new Schema(
         }
       }],
       default: [],
+      validate: {
+        validator: (v) => v.length <= 200,
+        message: "A product cannot have more than 200 ratings. Ratings are capped to keep documents small; older ratings may be archived.",
+      },
     },
     averageRating: {
       type: Number,
@@ -153,6 +167,7 @@ ProductSchema.index({ isFeatured: 1 });
 ProductSchema.index({ name: "text", description: "text" });
 ProductSchema.index({ averageRating: -1 });
 ProductSchema.index({ seller: 1, isActive: 1, createdAt: -1 });
+ProductSchema.index({ isActive: 1, category: 1 });
 ProductSchema.index({ createdAt: -1 });
 
 export default model("Product", ProductSchema);

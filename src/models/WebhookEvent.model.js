@@ -10,6 +10,7 @@ const webhookEventSchema = new mongoose.Schema(
     eventType: {
       type: String,
       required: true,
+      maxlength: [100, "Event type cannot exceed 100 characters"],
     },
     reference: {
       type: String,
@@ -28,6 +29,10 @@ const webhookEventSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Idempotency check (eventId + status) and reference dedupe lookups
+webhookEventSchema.index({ eventId: 1, status: 1 });
+webhookEventSchema.index({ reference: 1 });
 
 const WebhookEvent = mongoose.model("WebhookEvent", webhookEventSchema);
 
