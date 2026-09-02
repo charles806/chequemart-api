@@ -25,7 +25,10 @@ const connectDB = async () => {
     }
   } catch (error) {
     console.error(`MongoDB Connection Error: ${error.message}`);
-    process.exit(1);
+    // Do NOT process.exit here. In serverless (Vercel) a cold-start DB hiccup
+    // should not tear down the function; route handlers surface DB errors
+    // per-request instead, and mongoose will keep retrying via its driver.
+    throw error;
   }
 };
 

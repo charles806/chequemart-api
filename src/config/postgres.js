@@ -2,25 +2,37 @@ import pkg from "sequelize";
 const { Sequelize } = pkg;
 import "dotenv/config";
 
+const POSTGRES_URI = process.env.POSTGRES_URI;
+
 // Setup Sequelize instance
-export const sequelize = new Sequelize(process.env.POSTGRES_URI, {
-  dialect: "postgres",
-  logging: false,
-  dialectOptions: {
-    ssl: {
-      require: true,
-      rejectUnauthorized: false,
-    },
-  },
-  pool: {
-    max: 5,
-    min: 1,
-    acquire: 30000,
-    idle: 60000,
-  },
-});
+// Guard against a missing POSTGRES_URI: constructing Sequelize(undefined)
+// throws synchronously at import time, which would take down every module that
+// imports a Sequelize model (and, on serverless, the whole function). Degrade
+// to null instead so the app boots and per-request errors can be surfaced.
+export const sequelize = POSTGRES_URI
+  ? new Sequelize(POSTGRES_URI, {
+      dialect: "postgres",
+      logging: false,
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false,
+        },
+      },
+      pool: {
+        max: 5,
+        min: 1,
+        acquire: 30000,
+        idle: 60000,
+      },
+    })
+  : null;
 
 export const connectPostgres = async () => {
+  if (!sequelize) {
+    console.warn("PostgreSQL skipped — POSTGRES_URI is not set");
+    return;
+  }
   try {
     await sequelize.authenticate();
     console.log("PostgreSQL Connected: Financial tables");
@@ -38,4 +50,6 @@ export const connectPostgres = async () => {
 };
 
 // Connection pool monitoring
-sequelize.afterConnect(() => console.log('PostgreSQL: connection acquired'));
+if (sequelize) {
+  sequelize.afterConnect(() => console.log('PostgreSQL: connection acquired'));
+}

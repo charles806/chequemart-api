@@ -78,6 +78,20 @@ const startServer = async () => {
   }
 };
 
-startServer();
+// ─────────────────────────────────────────
+// Serverless (Vercel) path
+// ─────────────────────────────────────────
+// On Vercel the runtime imports this module and calls the exported `app`
+// directly per-request. We must NOT let startup side effects (env checks that
+// process.exit, blocking DB connects, app.listen) crash the function or delay
+// cold starts. Kick off DB connections lazily in the background and hand the
+// request handler straight back.
+if (!process.env.VERCEL) {
+  startServer();
+} else {
+  logger.info('Running in Vercel environment');
+  connectDB().catch((err) => logger.warn({ err }, 'MongoDB connection failed (lazy)'));
+  connectPostgres().catch((err) => logger.warn({ err }, 'PostgreSQL connection failed (lazy)'));
+}
 
 export default app;
