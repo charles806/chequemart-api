@@ -26,6 +26,7 @@ import webhookRoutes from "./routes/webhook.routes.js";
 
 import disputeRoutes from "./routes/dispute.routes.js";
 import supportRoutes from "./routes/support.routes.js";
+import escrowRoutes from "./routes/escrow.routes.js";
 import { releaseEscrow } from './controllers/cron.controller.js';
 
 import { errorHandler, notFound } from "./middleware/error.middleware.js";
@@ -210,6 +211,7 @@ app.get("/api/cron/release-escrow", releaseEscrow);
 
 app.use("/api/disputes", disputeRoutes);
 app.use("/api/support", supportRoutes);
+app.use("/api/escrow", escrowRoutes);
 
 // API versioning — v1
 app.use("/api/v1/auth", authLimiter, authRoutes);
@@ -223,6 +225,7 @@ app.use("/api/v1/upload", uploadRoutes);
 app.use("/api/v1/webhooks", webhookRoutes);
 app.use("/api/v1/disputes", disputeRoutes);
 app.use("/api/v1/support", supportRoutes);
+app.use("/api/v1/escrow", escrowRoutes);
 
 // Health check and root
 app.get("/", (req, res) => {
