@@ -1,5 +1,5 @@
-import pg from "pg";
-import "dotenv/config";
+import pg from 'pg';
+import 'dotenv/config';
 
 const { Pool } = pg;
 
@@ -9,8 +9,8 @@ const connectionString = process.env.POSTGRES_URI || process.env.DATABASE_URL;
 
 const isLocal =
   !connectionString ||
-  connectionString.includes("localhost") ||
-  connectionString.includes("127.0.0.1");
+  connectionString.includes('localhost') ||
+  connectionString.includes('127.0.0.1');
 
 export const pool = connectionString
   ? new Pool({
@@ -32,7 +32,7 @@ export const pool = connectionString
 export const query = async (text, params = []) => {
   if (!pool) {
     throw new Error(
-      "Escrow database pool is not configured. Set POSTGRES_URI (or DATABASE_URL) in the environment."
+      'Escrow database pool is not configured. Set POSTGRES_URI (or DATABASE_URL) in the environment.',
     );
   }
   return pool.query(text, params);

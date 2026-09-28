@@ -1,5 +1,5 @@
-import { query } from "./pool.js";
-import { ConflictError, EscrowError } from "../middleware/escrowValidation.js";
+import { query } from './pool.js';
+import { ConflictError, EscrowError } from '../middleware/escrowValidation.js';
 
 /**
  * Create a new escrow record when an order is placed.
@@ -15,11 +15,11 @@ export async function createEscrow(data) {
         (sub_order_id, seller_id, buyer_id, amount_naira, seller_payout_naira, commission_naira)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
-      [subOrderId, sellerId, buyerId, amountNaira, sellerPayoutNaira, commissionNaira]
+      [subOrderId, sellerId, buyerId, amountNaira, sellerPayoutNaira, commissionNaira],
     );
     return rows[0];
   } catch (err) {
-    if (err.code === "23505") {
+    if (err.code === '23505') {
       throw new ConflictError(`Escrow already exists for sub_order_id: ${subOrderId}`);
     }
     if (err instanceof EscrowError) throw err;
@@ -33,7 +33,7 @@ export async function createEscrow(data) {
  * @returns {Promise<Object|null>}
  */
 export async function getEscrowById(escrowId) {
-  const { rows } = await query("SELECT * FROM escrow_ledger WHERE id = $1", [escrowId]);
+  const { rows } = await query('SELECT * FROM escrow_ledger WHERE id = $1', [escrowId]);
   return rows[0] || null;
 }
 
@@ -43,7 +43,7 @@ export async function getEscrowById(escrowId) {
  * @returns {Promise<Object|null>}
  */
 export async function getEscrowBySubOrderId(subOrderId) {
-  const { rows } = await query("SELECT * FROM escrow_ledger WHERE sub_order_id = $1", [subOrderId]);
+  const { rows } = await query('SELECT * FROM escrow_ledger WHERE sub_order_id = $1', [subOrderId]);
   return rows[0] || null;
 }
 
@@ -61,12 +61,12 @@ export async function releaseEscrow(escrowId, reason = null) {
             buyer_confirmed_at = COALESCE(buyer_confirmed_at, CURRENT_TIMESTAMP),
             released_at = CURRENT_TIMESTAMP,
             notes = CASE
-              WHEN $2 IS NULL THEN notes
-              ELSE COALESCE(notes, '') || E'\n[release] ' || $2
+              WHEN $2::text IS NULL THEN notes
+              ELSE COALESCE(notes, '') || E'\n[release] ' || $2::text
             END
       WHERE id = $1 AND status = 'held'
       RETURNING *`,
-    [escrowId, reason]
+    [escrowId, reason],
   );
   return rows[0] || null;
 }
@@ -86,7 +86,7 @@ export async function refundEscrow(escrowId, reason) {
             refunded_at = CURRENT_TIMESTAMP
       WHERE id = $1 AND status IN ('held', 'disputed')
       RETURNING *`,
-    [escrowId, reason]
+    [escrowId, reason],
   );
   return rows[0] || null;
 }
@@ -102,7 +102,7 @@ export async function markEscrowDisputed(escrowId) {
         SET status = 'disputed'
       WHERE id = $1 AND status = 'held'
       RETURNING *`,
-    [escrowId]
+    [escrowId],
   );
   return rows[0] || null;
 }
@@ -118,7 +118,7 @@ export async function getSellerPendingEscrows(sellerId) {
        FROM escrow_ledger
       WHERE seller_id = $1 AND status = 'held'
       ORDER BY created_at DESC`,
-    [sellerId]
+    [sellerId],
   );
   return rows;
 }
@@ -138,7 +138,7 @@ export async function getReleasedEscrowsPendingPayout(limit = 50, offset = 0) {
         AND released_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'
       ORDER BY released_at ASC
       LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    [limit, offset],
   );
   return rows;
 }
@@ -153,7 +153,7 @@ export async function countReleasedEscrowsPendingPayout() {
        FROM escrow_ledger
       WHERE status = 'released'
         AND released_at <= CURRENT_TIMESTAMP - INTERVAL '2 days'
-        AND released_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'`
+        AND released_at >= CURRENT_TIMESTAMP - INTERVAL '7 days'`,
   );
   return rows[0].total;
 }
@@ -174,7 +174,7 @@ export async function getEscrowStats() {
         COUNT(*) FILTER (WHERE status = 'released')                       AS count_released,
         COUNT(*) FILTER (WHERE status = 'refunded')                       AS count_refunded,
         COUNT(*) FILTER (WHERE status = 'disputed')                       AS count_disputed
-       FROM escrow_ledger`
+       FROM escrow_ledger`,
   );
   return rows[0];
 }
@@ -191,7 +191,7 @@ export async function updateEscrowNotes(escrowId, notes) {
         SET notes = $2
       WHERE id = $1
       RETURNING *`,
-    [escrowId, notes]
+    [escrowId, notes],
   );
   return rows[0] || null;
 }

@@ -42,7 +42,8 @@ const errorHandler = (err, req, res, next) => {
   }
 
   //  Mongoose: Validation Error 
-  if (err.name === "ValidationError") {
+  // Guard on err.errors so custom ValidationErrors (name collision) pass through.
+  if (err.name === "ValidationError" && err.errors) {
     statusCode = 400;
     const errors = Object.values(err.errors).map((e) => e.message);
     message = errors.join(". ");

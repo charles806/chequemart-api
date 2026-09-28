@@ -7,4 +7,4 @@ const OBJECT_ID_RE = /^[0-9a-f]{24}$/i;
  * sellers/buyers/orders).
  */
 export const isValidEntityId = (value) =>
-  typeof value === "string" && (UUID_RE.test(value) || OBJECT_ID_RE.test(value));
+  typeof value === 'string' && (UUID_RE.test(value) || OBJECT_ID_RE.test(value));

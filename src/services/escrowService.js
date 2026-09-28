@@ -1,5 +1,5 @@
-import { createEscrow } from "../db/escrowQueries.js";
-import { ValidationError } from "../middleware/escrowValidation.js";
+import { createEscrow } from '../db/escrowQueries.js';
+import { ValidationError } from '../middleware/escrowValidation.js';
 
 // Commission tiers (spec defaults, overridable via env):
 //   < 10,000           → 0%
@@ -11,10 +11,10 @@ const envNumber = (key, fallback) => {
   return Number.isFinite(n) ? n : fallback;
 };
 
-const BELOW_MIN_THRESHOLD = envNumber("ESCROW_COMMISSION_BELOW_MIN_THRESHOLD", 10000);
-const TIER1_MAX = envNumber("ESCROW_COMMISSION_TIER1_MAX", 50000);
-const TIER_LOW_RATE = envNumber("ESCROW_COMMISSION_TIER_LOW_RATE", 5) / 100;
-const TIER_HIGH_RATE = envNumber("ESCROW_COMMISSION_TIER_HIGH_RATE", 10) / 100;
+const BELOW_MIN_THRESHOLD = envNumber('ESCROW_COMMISSION_BELOW_MIN_THRESHOLD', 10000);
+const TIER1_MAX = envNumber('ESCROW_COMMISSION_TIER1_MAX', 50000);
+const TIER_LOW_RATE = envNumber('ESCROW_COMMISSION_TIER_LOW_RATE', 5) / 100;
+const TIER_HIGH_RATE = envNumber('ESCROW_COMMISSION_TIER_HIGH_RATE', 10) / 100;
 
 const roundMoney = (n) => Math.round(n);
 
@@ -27,14 +27,14 @@ export function calculateCommission(amountNaira) {
   const amount = Number(amountNaira);
 
   if (!Number.isFinite(amount) || amount < 0) {
-    throw new ValidationError("amount_naira must be a non-negative number");
+    throw new ValidationError('amount_naira must be a non-negative number');
   }
 
   if (amount < BELOW_MIN_THRESHOLD) {
     return {
       commission: 0,
       sellerPayout: amount,
-      tier: "below_minimum",
+      tier: 'below_minimum',
     };
   }
 

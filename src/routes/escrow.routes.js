@@ -1,7 +1,7 @@
-import { Router } from "express";
-import asyncHandler from "../utils/asyncHandler.js";
-import * as escrowQueries from "../db/escrowQueries.js";
-import { createEscrowWithCommission } from "../services/escrowService.js";
+import { Router } from 'express';
+import asyncHandler from '../utils/asyncHandler.js';
+import * as escrowQueries from '../db/escrowQueries.js';
+import { createEscrowWithCommission } from '../services/escrowService.js';
 import {
   NotFoundError,
   ValidationError,
@@ -10,7 +10,7 @@ import {
   validatePagination,
   validateRefundReason,
   validateSellerId,
-} from "../middleware/escrowValidation.js";
+} from '../middleware/escrowValidation.js';
 
 const router = Router();
 
@@ -37,7 +37,7 @@ const ledgerView = (row) => ({
 // Endpoint 1: Create Escrow
 // ─────────────────────────────────────────
 router.post(
-  "/create",
+  '/create',
   validateCreateEscrow,
   asyncHandler(async (req, res) => {
     const { sub_order_id, seller_id, buyer_id, amount_naira } = req.body;
@@ -61,25 +61,26 @@ router.post(
       },
       timestamp: now(),
     });
-  })
+  }),
 );
 
 // ─────────────────────────────────────────
 // Endpoint 7: Get Escrow Stats
 // ─────────────────────────────────────────
 router.get(
-  "/stats",
+  '/stats',
   asyncHandler(async (req, res) => {
-    const stats = await escrowQueries.getEscrowStats();
+    const raw = await escrowQueries.getEscrowStats();
+    const stats = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Number(v)]));
     res.json({ success: true, data: stats, timestamp: now() });
-  })
+  }),
 );
 
 // ─────────────────────────────────────────
 // Endpoint 6: Get Released Escrows Pending Payout
 // ─────────────────────────────────────────
 router.get(
-  "/pending-payout",
+  '/pending-payout',
   validatePagination,
   asyncHandler(async (req, res) => {
     const limit = Number(req.query.limit) || 50;
@@ -101,14 +102,14 @@ router.get(
       pagination: { limit, offset, total },
       timestamp: now(),
     });
-  })
+  }),
 );
 
 // ─────────────────────────────────────────
 // Endpoint 5: Get Seller's Pending Escrows
 // ─────────────────────────────────────────
 router.get(
-  "/seller/:seller_id/pending",
+  '/seller/:seller_id/pending',
   validateSellerId,
   asyncHandler(async (req, res) => {
     const rows = await escrowQueries.getSellerPendingEscrows(req.params.seller_id);
@@ -125,14 +126,14 @@ router.get(
       })),
       timestamp: now(),
     });
-  })
+  }),
 );
 
 // ─────────────────────────────────────────
 // Endpoint 2: Get Escrow
 // ─────────────────────────────────────────
 router.get(
-  "/:escrow_id",
+  '/:escrow_id',
   validateEscrowId,
   asyncHandler(async (req, res) => {
     const escrow = await escrowQueries.getEscrowById(Number(req.params.escrow_id));
@@ -142,7 +143,7 @@ router.get(
     }
 
     res.json({ success: true, data: ledgerView(escrow), timestamp: now() });
-  })
+  }),
 );
 
 const requireState = (escrow, allowed, action) => {
@@ -151,7 +152,7 @@ const requireState = (escrow, allowed, action) => {
   }
   if (!allowed.includes(escrow.status)) {
     throw new ValidationError(
-      `Cannot ${action} escrow ${escrow.id}: current status is '${escrow.status}'`
+      `Cannot ${action} escrow ${escrow.id}: current status is '${escrow.status}'`,
     );
   }
 };
@@ -160,15 +161,15 @@ const requireState = (escrow, allowed, action) => {
 // Endpoint 3: Release Escrow
 // ─────────────────────────────────────────
 router.post(
-  "/:escrow_id/release",
+  '/:escrow_id/release',
   validateEscrowId,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.escrow_id);
     const existing = await escrowQueries.getEscrowById(id);
-    requireState(existing, ["held"], "release");
+    requireState(existing, ['held'], 'release');
 
     const reason =
-      typeof req.body?.reason === "string" && req.body.reason.trim()
+      typeof req.body?.reason === 'string' && req.body.reason.trim()
         ? req.body.reason.trim()
         : null;
 
@@ -184,20 +185,20 @@ router.post(
       },
       timestamp: now(),
     });
-  })
+  }),
 );
 
 // ─────────────────────────────────────────
 // Endpoint 4: Refund Escrow
 // ─────────────────────────────────────────
 router.post(
-  "/:escrow_id/refund",
+  '/:escrow_id/refund',
   validateEscrowId,
   validateRefundReason,
   asyncHandler(async (req, res) => {
     const id = Number(req.params.escrow_id);
     const existing = await escrowQueries.getEscrowById(id);
-    requireState(existing, ["held", "disputed"], "refund");
+    requireState(existing, ['held', 'disputed'], 'refund');
 
     const escrow = await escrowQueries.refundEscrow(id, req.body.reason.trim());
 
@@ -211,7 +212,7 @@ router.post(
       },
       timestamp: now(),
     });
-  })
+  }),
 );
 
 export default router;
